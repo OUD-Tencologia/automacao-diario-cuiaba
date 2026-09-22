@@ -1,0 +1,39 @@
+# Segredos e configuracoes locais
+.env
+.env.*
+!.env.example
+
+# Dados licenciados e arquivos locais de apoio
+2.Análise e Requisitos/folhapress/*.txt
+.tokensave/
+tmp/
+
+# Material de autenticação e estado local de automação
+*.pem
+*.key
+*.p12
+*.pfx
+playwright/.auth/
+storage_state.json
+n8n_data/
+
+# Saídas de ferramentas de desenvolvimento
+.coverage
+coverage/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime local e dados persistentes de containers
+data/
+backups/
+volumes/
+
+# Arquivos de ferramentas e sistema
+.terraform/
+*.tfstate
+*.tfstate.*
+__pycache__/
+.pytest_cache/
+.venv/
+.DS_Store
+Thumbs.db
