@@ -24,3 +24,18 @@ e é removido antes do script terminar.
 Se a página usar campos ou botões não cobertos pelos seletores genéricos,
 preencha os seletores opcionais no `.env` após a inspeção manual. Esses
 seletores são configuração local e não precisam ser versionados.
+
+## Buckets MinIO
+
+`provision_minio_buckets.ps1` prepara e valida os buckets físicos já existentes
+na VPS de homologação. Ele usa a chave SSH local e lê os segredos apenas dentro
+do container remoto, sem imprimi-los.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/provision_minio_buckets.ps1 -ValidateOnly
+powershell -ExecutionPolicy Bypass -File scripts/provision_minio_buckets.ps1
+```
+
+A execução completa cria/valida os buckets, ativa versionamento, aplica a
+retenção do Bronze, faz um put/get com conteúdo sintético e reinicia somente o
+MinIO para confirmar persistência. Veja `docs/CONFIGURACAO_MINIO.md`.

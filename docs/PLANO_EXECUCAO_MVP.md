@@ -211,6 +211,7 @@ Cada sprint termina somente depois de todos os itens planejados, testes e crité
 **Período:** 29/09 a 01/10  
 **Esforço:** 7h  
 **Backlog:** `OBJ-01`, `API-01`
+**Status parcial:** `OBJ-01` concluída antecipadamente em 23/09/2026; `API-01` pendente.
 
 #### Tarefas
 
