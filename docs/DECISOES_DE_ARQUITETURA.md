@@ -51,6 +51,19 @@ TLS público só entram após domínio e decisão de infraestrutura.
 **Consequência:** a homologação ocorrerá na VPS definida, sem antecipar
 produção ou expor serviços de dados.
 
+## ADR-007 — Desenvolvimento local com serviços existentes na VPS
+
+**Decisão:** PostgreSQL, MinIO e n8n já existentes na VPS de homologação serão
+reutilizados. A Automation API será desenvolvida e testada localmente; não será
+criado um segundo conjunto de containers locais para esses serviços.
+
+**Consequência:** no ambiente atual, PostgreSQL, MinIO/S3 e n8n estão
+publicados na interface da VPS e a API local os acessará diretamente com as
+credenciais configuradas. Isso é uma exceção à arquitetura-base de dados em
+rede interna e fica registrado como risco de homologação. Nenhuma porta será
+fechada sem decisão de infraestrutura; antes de produção, o acesso deve ser
+restrito por firewall/VPN ou migrado para túneis SSH e rede interna Docker.
+
 ## Registro de pendências
 
 | ID | Pendência | Dono | Impacto imediato |

@@ -41,8 +41,9 @@ idempotência, persistência e auditoria pertencem à Automation API.
 2. Preencha somente as variáveis necessárias para a etapa que será executada.
 3. Nunca versione `.env`, cookies, tokens, credenciais ou TXT licenciado.
 
-Os serviços em Docker Compose serão incluídos na tarefa `INF-01`. A API e suas
-dependências serão incluídas a partir da tarefa `API-01`, conforme o backlog.
+PostgreSQL, MinIO e n8n já existem na VPS de homologação e são reutilizados no
+desenvolvimento. A API será executada localmente e usará as configurações locais
+de acesso a esses serviços; ela será implantada na VPS somente na homologação.
 
 ## Convenções de trabalho
 
