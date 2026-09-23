@@ -8,6 +8,12 @@
 .tokensave/
 tmp/
 
+# Fontes brutas locais; as decisões sanitizadas estão em docs/
+2.Análise e Requisitos/
+DocsInuteis/
+output/pdf/
+1.Arquitetura de Design System/1.1 IaC/
+
 # Material de autenticação e estado local de automação
 *.pem
 *.key
