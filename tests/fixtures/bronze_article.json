@@ -1,0 +1,18 @@
+{
+  "source": "folhapress",
+  "source_id": "9990001",
+  "headline": "MATÉRIA-SINTÉTICA: título usado somente para teste",
+  "author_name": "Autora Sintética",
+  "source_url": "https://folhapress.folha.com.br/texto/9990001",
+  "download_url": "https://folhapress.folha.com.br/texto/9990001/baixar",
+  "source_category": "Cotidiano",
+  "source_content_date": "2026-09-23",
+  "bucket_name": "bronze-raw",
+  "object_key": "bronze-raw/folhapress/2026/09/23/9990001.txt",
+  "content_hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "content_size_bytes": 512,
+  "raw_metadata": {
+    "fixture": true,
+    "licensed_content": false
+  }
+}
