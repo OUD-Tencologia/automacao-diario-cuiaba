@@ -172,6 +172,7 @@ Cada sprint termina somente depois de todos os itens planejados, testes e crité
 **Período:** 22/09 a 28/09 (dias úteis: 22 a 26 e 28)  
 **Esforço:** 15h  
 **Backlog:** `PLN-01`, `SRC-01`, `INF-01`, `DAT-01`
+**Status de execução:** concluída antecipadamente em 23/09/2026.
 
 #### Tarefas
 
@@ -192,6 +193,18 @@ Cada sprint termina somente depois de todos os itens planejados, testes e crité
 
 **Data:** 28/09  
 **Mensagem:** `feat(sprint-01): base do projeto, poc folhapress e modelo inicial`
+
+#### Encerramento registrado
+
+- Repositório, contratos sanitizados e decisões de arquitetura foram versionados.
+- A PoC manual confirmou login Folhapress, menu `TEXTOS`, filtro, paginação de
+  24 registros e download de TXT sem CAPTCHA ou MFA.
+- PostgreSQL, MinIO e n8n existentes na VPS foram validados sem criar uma pilha
+  Docker local duplicada.
+- As tabelas físicas operacional, Bronze, Silver e Gold, com índices, JSONB,
+  auditoria, deduplicação e regras de imutabilidade, passaram em testes
+  unitários e em banco PostgreSQL temporário na VPS. O banco de teste foi
+  removido ao final; o banco de homologação da aplicação permaneceu intocado.
 
 ### Sprint 2 - Objetos e base da API
 
