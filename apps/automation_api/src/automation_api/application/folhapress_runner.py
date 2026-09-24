@@ -22,12 +22,14 @@ from automation_api.infrastructure.gold_news_repository import GoldNewsRepositor
 from automation_api.infrastructure.minio import RawStorage, build_s3_client
 from automation_api.infrastructure.postgres import build_postgresql_engine
 from automation_api.infrastructure.postgres import CaptureAlreadyRunningError, PostgreSQLAdvisoryLock
+from automation_api.observability import configure_automation_logging
 from automation_api.settings import Settings
 
 
 def run_folhapress_capture(settings: Settings, *, capture_id: str) -> CaptureResult:
     """Monta dependências de um único ciclo; a sessão e o engine são descartados."""
 
+    configure_automation_logging(settings.log_level)
     configuration = settings.folhapress()
     engine = build_postgresql_engine(
         settings.resolved_database_url,

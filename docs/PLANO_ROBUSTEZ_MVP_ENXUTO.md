@@ -207,6 +207,10 @@ sem exclusão automática.
 **Objetivo:** fazer o workflow representar corretamente o resultado da API e
 dar uma operação simples para homologação.
 
+**Estado:** logs de captura seguros, identificados por `capture_id`, e rotação
+de logs do container implementados localmente. A adaptação visual do workflow
+e o aceite manual no n8n permanecem pendentes.
+
 1. Atualizar o workflow para interpretar o contrato R1: sucesso completo,
    sucesso com pendência recuperável, lock ocupado e falha não recuperável.
 2. Manter somente uma retentativa global, porque a R2 já trata retry por item.
