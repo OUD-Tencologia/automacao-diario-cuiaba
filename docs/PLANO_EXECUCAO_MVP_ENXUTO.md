@@ -158,6 +158,14 @@ testada nesta execução expirou por timeout, portanto nenhum container ou banco
 remoto foi alterado. Não considerar a sprint aceita até todos os gates do runbook
 `docs/RUNBOOK_HOMOLOGACAO_MVP.md` passarem.
 
+**Revalidação posterior:** PostgreSQL e MinIO responderam aos health checks de
+leitura e não foram encontradas tabelas nos schemas editoriais esperados. O SSH
+no endereço configurado recusou a chave, e o alias SSH expirou; por isso ainda
+faltam backup e confirmação remota do Docker. A validação Folhapress foi
+intermitente: uma tentativa chegou ao download, mas não montou um rascunho com
+os campos mínimos; tentativas seguintes falharam no download e na saúde da
+origem. Nenhum dado foi gravado no banco ou MinIO.
+
 1. [x] Versionar workflow n8n inativo com cron `0 * * * *` e gatilho manual.
 2. [x] Configurar chamada privada à API, timeout, retry limitado e saída de
    erro rastreável; n8n não recebe credenciais de banco/MinIO.

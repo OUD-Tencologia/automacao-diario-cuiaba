@@ -16,3 +16,7 @@ class FolhapressCatalogError(FolhapressSourceError):
 
 class FolhapressDownloadError(FolhapressSourceError):
     """O TXT original não pôde ser baixado ou validado."""
+
+    def __init__(self, message: str, *, diagnostic_code: str = "unknown") -> None:
+        super().__init__(message)
+        self.diagnostic_code = diagnostic_code

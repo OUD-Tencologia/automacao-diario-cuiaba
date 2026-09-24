@@ -9,6 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps" / "automation_api" / "src"))
 
+from automation_api.domain.folhapress import FolhapressDataError
 from automation_api.infrastructure.folhapress import (
     ArticleExtractor,
     FolhapressAuth,
@@ -16,6 +17,11 @@ from automation_api.infrastructure.folhapress import (
     FolhapressCatalog,
     SourceHealth,
     TxtDownloader,
+)
+from automation_api.infrastructure.folhapress.errors import FolhapressDownloadError
+from automation_api.infrastructure.folhapress.extractor import (
+    _labeled_txt_fields,
+    decode_original_text,
 )
 from automation_api.settings import get_settings
 
@@ -30,18 +36,56 @@ def main() -> None:
     settings = get_settings()
     configuration = replace(settings.folhapress(), max_pages_per_cycle=arguments.max_pages)
     with FolhapressBrowserSession(configuration) as session:
-        SourceHealth(session.page, configuration).check()
-        FolhapressAuth(session.page, configuration).login()
-        articles = FolhapressCatalog(session.page, configuration).list_articles()
-        if not articles:
-            raise RuntimeError("O catálogo Folhapress não retornou matérias")
+        stage = "source_health"
+        try:
+            SourceHealth(session.page, configuration).check()
+            stage = "login"
+            FolhapressAuth(session.page, configuration).login()
+            stage = "catalog"
+            articles = FolhapressCatalog(session.page, configuration).list_articles()
+            if not articles:
+                print("folhapress_access=failed stage=catalog error=empty_catalog")
+                return
+            stage = "article_page"
+            article = ArticleExtractor(session.page).extract(articles[0])
+        except Exception as error:
+            print(
+                "folhapress_access=failed "
+                f"stage={stage} error_type={type(error).__name__}"
+            )
+            return
 
-        article = ArticleExtractor(session.page).extract(articles[0])
-        original = TxtDownloader(
-            session.context,
-            timeout_ms=configuration.navigation_timeout_ms,
-        ).download(articles[0])
-        draft = ArticleExtractor(session.page).build_draft(article, original)
+        try:
+            original = TxtDownloader(
+                session.context,
+                timeout_ms=configuration.navigation_timeout_ms,
+            ).download(articles[0])
+        except FolhapressDownloadError as error:
+            print(
+                "folhapress_access=partial "
+                f"articles_found={len(articles)} "
+                f"download_result=failed "
+                f"download_failure={error.diagnostic_code}"
+            )
+            return
+        try:
+            draft = ArticleExtractor(session.page).build_draft(article, original)
+        except FolhapressDataError:
+            fields = _labeled_txt_fields(decode_original_text(original))
+            print(
+                "folhapress_access=partial "
+                f"articles_found={len(articles)} "
+                f"first_id={articles[0].source_id} "
+                f"txt_bytes={len(original)} "
+                f"has_page_title={bool(article.title)} "
+                f"has_page_datetime={bool(article.published_at)} "
+                f"has_page_content={bool(article.content)} "
+                f"has_txt_title={bool(fields.get('title'))} "
+                f"has_txt_datetime={bool(fields.get('published_at'))} "
+                f"has_txt_description={bool(fields.get('content'))} "
+                "draft_error=required_fields_missing"
+            )
+            return
 
     print(
         "folhapress_access=ok "

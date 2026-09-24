@@ -21,15 +21,29 @@ class TxtDownloader:
             )
             status_code = getattr(response, "status", None)
             if status_code is None or not 200 <= status_code < 300:
-                raise FolhapressDownloadError("O download do TXT Folhapress falhou")
+                raise FolhapressDownloadError(
+                    "O download do TXT Folhapress falhou",
+                    diagnostic_code="http_status",
+                )
             body = response.body()
         except FolhapressDownloadError:
             raise
         except Exception:
-            raise FolhapressDownloadError("Não foi possível baixar o TXT Folhapress") from None
+            raise FolhapressDownloadError(
+                "Não foi possível baixar o TXT Folhapress",
+                diagnostic_code="request_exception",
+            ) from None
 
-        if not body or _looks_like_html(body):
-            raise FolhapressDownloadError("O download Folhapress não retornou um TXT válido")
+        if not body:
+            raise FolhapressDownloadError(
+                "O download Folhapress não retornou um TXT válido",
+                diagnostic_code="empty_body",
+            )
+        if _looks_like_html(body):
+            raise FolhapressDownloadError(
+                "O download Folhapress não retornou um TXT válido",
+                diagnostic_code="html_response",
+            )
         return body
 
 

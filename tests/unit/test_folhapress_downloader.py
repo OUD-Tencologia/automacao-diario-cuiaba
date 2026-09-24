@@ -54,3 +54,11 @@ class FolhapressDownloaderTest(unittest.TestCase):
 
         with self.assertRaises(FolhapressDownloadError):
             TxtDownloader(context, timeout_ms=1_000).download(self.reference)
+
+    def test_download_error_has_a_safe_diagnostic_code(self) -> None:
+        context = FakeContext(FakeResponse(200, b"<html>login</html>"))
+
+        with self.assertRaises(FolhapressDownloadError) as raised:
+            TxtDownloader(context, timeout_ms=1_000).download(self.reference)
+
+        self.assertEqual(raised.exception.diagnostic_code, "html_response")
