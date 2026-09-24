@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from automation_api.application.capture_folhapress import CaptureFolhapress, CaptureResult
+from time import perf_counter
+
+from automation_api.application.capture_folhapress import (
+    CaptureCycleError,
+    CaptureFolhapress,
+    CaptureResult,
+    CaptureSourceError,
+)
 from automation_api.application.editorial_summary import SumyLsaEditorialSummary
 from automation_api.infrastructure.folhapress import (
     ArticleExtractor,
@@ -16,7 +23,7 @@ from automation_api.infrastructure.postgres import build_postgresql_engine
 from automation_api.settings import Settings
 
 
-def run_folhapress_capture(settings: Settings) -> CaptureResult:
+def run_folhapress_capture(settings: Settings, *, capture_id: str) -> CaptureResult:
     """Monta dependências de um único ciclo; a sessão e o engine são descartados."""
 
     configuration = settings.folhapress()
@@ -24,6 +31,8 @@ def run_folhapress_capture(settings: Settings) -> CaptureResult:
         settings.resolved_database_url,
         settings.health_check_timeout_seconds,
     )
+    started_at = perf_counter()
+    stage = "browser"
     try:
         raw_storage = RawStorage(
             settings.minio_bucket_bronze,
@@ -37,8 +46,11 @@ def run_folhapress_capture(settings: Settings) -> CaptureResult:
         )
         repository = GoldNewsRepository(engine)
         with FolhapressBrowserSession(configuration) as session:
+            stage = "source_health"
             SourceHealth(session.page, configuration).check()
+            stage = "login"
             FolhapressAuth(session.page, configuration).login()
+            stage = "catalog"
             return CaptureFolhapress(
                 catalog=FolhapressCatalog(session.page, configuration),
                 extractor=ArticleExtractor(
@@ -52,6 +64,16 @@ def run_folhapress_capture(settings: Settings) -> CaptureResult:
                 raw_storage=raw_storage,
                 repository=repository,
                 summary_generator=SumyLsaEditorialSummary(),
+                capture_id=capture_id,
             ).run()
+    except CaptureCycleError:
+        raise
+    except Exception as error:
+        raise CaptureSourceError(
+            capture_id=capture_id,
+            stage=stage,
+            error=error,
+            duration_ms=round((perf_counter() - started_at) * 1000),
+        ) from None
     finally:
         engine.dispose()

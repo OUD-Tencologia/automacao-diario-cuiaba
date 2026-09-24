@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
 from automation_api.application.capture_folhapress import CaptureCycleError, CaptureFolhapress
 from automation_api.domain.folhapress import ArticleReference, ExtractedArticle
 from automation_api.domain.news import NewsDraft, StoredRawObject
+from automation_api.infrastructure.folhapress.errors import FolhapressDownloadError
 from automation_api.infrastructure.gold_news_repository import PersistedNews
 
 
@@ -50,7 +51,7 @@ class FakeDownloader:
     def download(self, reference: ArticleReference) -> bytes:
         self.downloaded_ids.append(reference.source_id)
         if reference.source_id in self.failing_ids:
-            raise RuntimeError("synthetic download failure")
+            raise FolhapressDownloadError("synthetic download failure", diagnostic_code="download_timeout")
         return f"texto-{reference.source_id}".encode()
 
 
@@ -121,6 +122,7 @@ class CaptureFolhapressTest(unittest.TestCase):
             raw_storage=raw_storage,
             repository=repository,
             summary_generator=FakeSummary(),
+            capture_id="test-existing",
         ).run()
 
         self.assertEqual(result.scanned, 2)
@@ -140,12 +142,18 @@ class CaptureFolhapressTest(unittest.TestCase):
             raw_storage=raw_storage,
             repository=repository,
             summary_generator=FakeSummary(),
+            capture_id="test-failure",
         )
 
         with self.assertRaises(CaptureCycleError) as raised:
             capture.run()
 
         self.assertEqual(raised.exception.failed_source_ids, ("102",))
+        self.assertEqual(raised.exception.result.capture_id, "test-failure")
+        self.assertEqual(raised.exception.result.failed, 1)
+        self.assertEqual(raised.exception.failures[0].stage, "download")
+        self.assertEqual(raised.exception.failures[0].diagnostic_code, "download_timeout")
+        self.assertTrue(raised.exception.failures[0].retryable)
         self.assertEqual(repository.created_ids, ["101"])
         self.assertEqual(raw_storage.stored_ids, ["101"])
 
@@ -159,6 +167,7 @@ class CaptureFolhapressTest(unittest.TestCase):
             raw_storage=FakeRawStorage(),
             repository=repository,
             summary_generator=FakeSummary(should_fail=True),
+            capture_id="test-summary",
         ).run()
 
         self.assertEqual(result.captured, 1)
