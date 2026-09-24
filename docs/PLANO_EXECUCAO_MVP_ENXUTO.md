@@ -152,40 +152,59 @@ Trinix inativo.
 
 **Objetivo:** transformar a automação em ciclo horário na VPS.
 
-1. Versionar workflow n8n com cron `0 * * * *`.
-2. Configurar chamada privada, timeout, retry limitado e erro rastreável no n8n.
-3. Implantar somente a API na rede Docker dos serviços existentes na VPS; não
-   criar PostgreSQL, MinIO ou n8n locais adicionais.
-4. Fazer backup lógico e confirmar que não existem dados antes de aplicar a
-   migration Gold.
-5. Executar ciclo controlado de uma página: Folhapress -> MinIO -> Gold ->
-   resumo.
-6. Ativar o cron apenas depois do ciclo manual integrado passar.
-7. Criar runbook de configuração, reinício e reprocessamento.
+**Estado em 24/09/2026:** artefatos locais preparados e testados; implantação,
+migration e captura real ainda não passaram pelo gate externo. A conexão SSH
+testada nesta execução expirou por timeout, portanto nenhum container ou banco
+remoto foi alterado. Não considerar a sprint aceita até todos os gates do runbook
+`docs/RUNBOOK_HOMOLOGACAO_MVP.md` passarem.
+
+1. [x] Versionar workflow n8n inativo com cron `0 * * * *` e gatilho manual.
+2. [x] Configurar chamada privada à API, timeout, retry limitado e saída de
+   erro rastreável; n8n não recebe credenciais de banco/MinIO.
+3. [x] Preparar Compose isolado que acrescenta somente a API à rede Docker
+   existente e não publica porta no host.
+4. [ ] Validar SSH, rede, saída HTTPS e containers na VPS; implantar apenas a
+   API após a configuração segura.
+5. [ ] Fazer backup lógico e confirmar o estado do banco antes de aplicar
+   exclusivamente `002_mvp_single_gold_schema.sql`.
+6. [ ] Executar ciclo manual controlado de uma página: Folhapress -> MinIO ->
+   Gold -> resumo; validar reexecução idempotente.
+7. [ ] Ativar o cron somente após o ciclo manual integrado ser aprovado.
+8. [x] Criar runbook de configuração, gates, reinício e reprocessamento.
 
 **Aceite e testes:** workflow importável; execução manual; erro transitório e
 retry esgotado; n8n sem credencial de banco/MinIO; persistência após reinício;
-próximo ciclo idempotente.
+próximo ciclo idempotente. Itens locais são cobertos por testes automatizados;
+aceite integrado segue pendente até os gates remotos passarem.
 
-**Commit:** `feat(sprint-04): orquestra mvp na homologacao`
+**Commit:** `feat(sprint-04): prepara orquestracao e homologacao`
 
 ## Sprint 5 - Aceite técnico e handoff
 
 **Objetivo:** entregar o MVP reproduzível e pronto para o Admin futuro.
 
-1. Rodar testes unitários, integração e contrato finais.
-2. Revisar Git e logs para não haver segredo, cookie ou conteúdo licenciado
-   indevido.
-3. Atualizar README, OpenAPI, schema Gold e runbook.
-4. Documentar responsabilidades do Admin/frontend e pendências do Trinix.
-5. Demonstrar captura, TXT original, resumo de 150 caracteres, edição e
-   descarte lógico.
+**Estado em 24/09/2026:** revisão local concluída, com 66 testes unitários e
+contratuais verdes e validação sintática do Compose aprovada. A aceitação final
+permanece pendente da migration isolada, implantação e demonstração integrada na
+VPS; não foi declarada concluída sem essas evidências.
 
-**Aceite final:** cron horário funcional; captura configurada e idempotente;
-TXT verificável no `bronze-raw`; Gold única completa; resumo local apenas como
-sugestão; CRUD interno sem exclusão física; Trinix inativo e preparado.
+1. [x] Rodar a suíte unitária/contratual final; [ ] rodar validação isolada de
+   migration contra homologação descartável.
+2. [x] Revisar o diff desta etapa: sem `.env`, credenciais, cookies ou TXT
+   licenciado.
+3. [x] Atualizar README, contrato da API e runbook; o schema Gold não mudou
+   nesta etapa.
+4. [x] Manter documentadas as responsabilidades futuras do Admin/frontend e as
+   pendências do Trinix.
+5. [ ] Demonstrar na VPS a captura, TXT original, resumo de 150 caracteres,
+   edição e descarte lógico.
 
-**Commit:** `docs(sprint-05): finaliza aceite do mvp enxuto`
+**Aceite final:** ainda pendente. Exige cron horário funcional somente após
+aprovação do ciclo manual, captura idempotente, TXT verificável no `bronze-raw`,
+Gold única completa, resumo local apenas como sugestão, CRUD sem exclusão física
+e Trinix inativo.
+
+**Commit de revisão local:** `test(sprint-05): registra revisao local e gates externos`
 
 ## Regras de qualidade mínima
 

@@ -1,0 +1,43 @@
+name: automacao-editorial-api
+
+services:
+  automation-api:
+    build:
+      context: ../..
+      dockerfile: apps/automation_api/Dockerfile
+    image: automacao-editorial/automation-api:mvp
+    restart: unless-stopped
+    env_file:
+      - ./automation-api.env
+    environment:
+      APP_ENV: homologation
+      AUTOMATION_API_HOST: 0.0.0.0
+      AUTOMATION_API_PORT: "8000"
+      # O host `postgres` é um marcador resolvido pelas configurações tipadas
+      # usando POSTGRES_HOST, sem senha embutida na URL.
+      DATABASE_URL: postgresql+psycopg://postgres:5432/editorial
+      POSTGRES_HOST: automacao-editorial-postgres-1
+      MINIO_ENDPOINT: http://automacao-editorial-minio-1:9000
+      # Primeira execução controlada: limita a captura a uma página.
+      FOLHAPRESS_MAX_PAGES_PER_CYCLE: "1"
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health/live', timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    networks:
+      - editorial
+
+networks:
+  editorial:
+    name: automacao-editorial_interna
+    external: true

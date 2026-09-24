@@ -6,8 +6,10 @@ A Automation API é a porta privada da ingestão editorial. O n8n a chama para
 executar ciclos; ele não recebe acesso direto ao PostgreSQL ou MinIO.
 
 Na Sprint 3, a API possui a fundação para Gold única, captura modular da
-Folhapress, resumo local e serviço CRUD interno. O workflow horário do n8n e a
-implantação na rede privada da VPS entram na Sprint 4.
+Folhapress, resumo local e serviço CRUD interno. Na Sprint 4 foram preparados o
+workflow n8n inativo e um Compose que adiciona somente a API à rede existente.
+A implantação e o ciclo real aguardam a conectividade SSH e os gates de
+homologação registrados em `docs/RUNBOOK_HOMOLOGACAO_MVP.md`.
 
 ## Endpoints disponíveis
 
@@ -68,6 +70,19 @@ Para validar login/listagem/download sem gravar no MinIO ou PostgreSQL:
 
 O comando emite apenas contagens, ID e flags de presença de metadados; nunca
 imprime credenciais, cookies, título ou corpo de matéria.
+
+## Orquestração e homologação
+
+O workflow versionado em `workflows/n8n/folhapress-hourly-mvp.json` tem gatilho
+manual e cron `0 * * * *`, com timezone `America/Sao_Paulo`. Ele vem inativo,
+faz POST apenas para a Automation API, limita timeout/retry e encerra a execução
+com erro se as tentativas acabarem. Não guarda credenciais de banco ou MinIO.
+
+`infra/compose/automation-api.compose.yml` não recria serviços existentes e não
+publica a porta da API no host. O template das variáveis está ao lado; a cópia
+`automation-api.env` é privada e ignorada pelo Git. O primeiro piloto limita
+captura a uma página. Nunca iniciar o cron antes de uma captura manual integrada
+e idempotente passar; siga todos os gates em `docs/RUNBOOK_HOMOLOGACAO_MVP.md`.
 
 ## Resumo e contrato editorial
 

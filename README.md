@@ -29,6 +29,11 @@ Estadão, autenticação de pessoas, produção e integração real com Trinix.
   descarte lógico e adaptador Trinix desabilitado.
 - A API local conversa com PostgreSQL e MinIO existentes na VPS; não há uma
   segunda pilha local desses serviços.
+- Sprint 4 em preparação: workflow n8n versionado e inativo, Compose isolado
+  apenas para a API e runbook de homologação. A implantação/migration aguardam
+  acesso SSH à VPS e revalidação dos dados antes de qualquer DDL.
+- Revisão local atual: 66 testes unitários/contratuais e validação sintática do
+  Compose aprovados; o aceite integrado segue pendente da homologação remota.
 
 ## Documentação
 
@@ -36,6 +41,10 @@ Estadão, autenticação de pessoas, produção e integração real com Trinix.
 - `docs/REPLANEJAMENTO_MVP_ENXUTO.md`: decisões de escopo e arquitetura.
 - `docs/AUTOMATION_API.md`: health checks, captura e contrato CRUD.
 - `infra/migrations/README.md`: aplicação segura da migration Gold.
+- `docs/RUNBOOK_HOMOLOGACAO_MVP.md`: gates, implantação isolada, backup,
+  migration, ciclo manual e ativação do cron.
+- `workflows/n8n/folhapress-hourly-mvp.json`: workflow horário, com gatilho
+  manual e cron inativo por padrão.
 
 ## Execução local
 
