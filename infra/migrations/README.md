@@ -1,39 +1,20 @@
-# Migrations do PostgreSQL
+# Migrations do MVP enxuto
 
-`001_initial_editorial_schema.sql` cria as tabelas físicas das camadas
-operacional, Bronze, Silver e Gold. A migration implementa:
+`001_initial_editorial_schema.sql` preserva o modelo histórico Bronze/Silver/
+Gold e não deve ser aplicado na homologação deste MVP.
 
-- deduplicação de Bronze por `source + source_id`;
-- JSONB para metadados flexíveis sem substituir os campos relacionais;
-- rastreio de objetos MinIO e falhas parciais para reconciliação;
-- bloqueio de Bronze e Gold contra alteração ou remoção;
-- promoção para Gold somente com `author_name` preenchido;
-- índices para busca editorial, auditoria e reprocessamento.
+`002_mvp_single_gold_schema.sql` é a migration aplicável. Ela cria somente
+`gold.articles`. Caso encontre tabelas legadas com dados, aborta sem remover
+nenhuma linha.
 
-## Aplicação
+Antes de aplicar na VPS:
 
-A migration ainda não deve ser aplicada manualmente na VPS. Ela será executada
-em um banco descartável de validação antes do banco de homologação receber DDL.
-O executor versionado será incluído junto com a Automation API, para que o
-mesmo processo seja usado localmente e na VPS.
+1. Faça um backup lógico do banco.
+2. Execute `python scripts/validate_single_gold_migration.py` para validar a
+   transição em banco temporário.
+3. Confirme que não existem dados no modelo legado.
+4. Aplique exclusivamente `002_mvp_single_gold_schema.sql` na homologação.
 
-`001_initial_editorial_schema.down.sql` é destrutiva e serve apenas para o
-banco descartável de teste. Nunca a execute em ambiente com dados aceitos.
-
-## Validação de integração
-
-Depois de aplicar a migration em um banco vazio e descartável, execute
-`tests/integration/initial_schema_invariants.sql`. Ele valida a criação das
-camadas físicas e as regras críticas de integridade e imutabilidade, usando
-apenas dados sintéticos.
-
-Com o SSH por chave configurado e as variáveis `VPS_HOMOLOGATION_*` preenchidas
-no `.env` local, a validação descartável pode ser repetida com:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/validate_dat01_remote.ps1
-```
-
-O script cria um banco temporário com nome único, aplica a migration e o teste
-de invariantes e o remove ao finalizar. Ele não aplica DDL no banco de
-homologação da aplicação e não lê nem exibe senhas.
+O script de validação cria e remove o banco temporário
+`automacao_editorial_sprint1_validation`; ele não aplica schema na base de
+homologação da aplicação.

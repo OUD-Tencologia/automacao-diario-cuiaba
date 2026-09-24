@@ -1,6 +1,41 @@
 # Scripts de diagnóstico local
 
-## PoC Folhapress
+## Testes da Automation API
+
+Rode os testes unitários com o ambiente virtual do repositório:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test_automation_api.ps1
+```
+
+Para incluir a validação de transição do schema, use `-Integration`. Ela cria e
+remove o banco `automacao_editorial_sprint1_validation` no PostgreSQL apontado
+pela configuração local; use somente o PostgreSQL de homologação após confirmar
+que esse banco temporário não existe. Nunca execute contra produção.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test_automation_api.ps1 -Integration
+```
+
+## Validação Folhapress do MVP
+
+`validate_folhapress_access.py` é o diagnóstico vigente da captura enxuta. Ele
+abre uma sessão temporária, valida saúde, login, catálogo, primeira página,
+extração e download de TXT exclusivamente em memória. Não toca MinIO nem
+PostgreSQL e não imprime conteúdo licenciado ou segredo.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_folhapress_access.py --max-pages 1
+```
+
+Um `ERR_CONNECTION_RESET` da origem é uma falha transitória reexecutável pelo
+n8n; revise os seletores somente se a página carregar, mas o formulário mudar.
+
+## PoC Folhapress histórica
+
+`folhapress_poc.py` pertence ao levantamento anterior e não é o caminho usado
+pela Automation API do MVP enxuto. Mantenha-o somente como evidência da PoC
+manual.
 
 `folhapress_poc.py` valida o acesso autenticado ao caminho `LOGIN` → `ENTRAR`
 → `TEXTOS` e, quando o seletor local do filtro estiver definido, aplica

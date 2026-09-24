@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+/infra/compose/automation-api.env
 
 # Dados licenciados e arquivos locais de apoio
 2.Análise e Requisitos/folhapress/*.txt
@@ -41,5 +42,6 @@ volumes/
 __pycache__/
 .pytest_cache/
 .venv/
+*.egg-info/
 .DS_Store
 Thumbs.db

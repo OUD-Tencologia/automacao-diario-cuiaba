@@ -1,0 +1,115 @@
+{
+  "id": "dcFolhapressMvp01",
+  "name": "MVP - Captura Folhapress (homologacao)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "1ad02756-f5e5-4da8-8b0d-04ed88f25322",
+      "name": "A cada hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        180
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5f94c2af-207e-4ea6-b613-5cdca401ce85",
+      "name": "Execucao manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://automation-api:8000/automation/folhapress/capture",
+        "options": {
+          "timeout": 900000
+        }
+      },
+      "id": "b7064ee0-5e18-4b27-a416-34cc7cbb89d5",
+      "name": "Capturar Folhapress pela API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        540,
+        280
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 60000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "errorMessage": "={{ $json.error?.message || 'Falha na chamada da Automation API apos as tentativas configuradas' }}"
+      },
+      "id": "4f6f75b0-0f53-40a7-92b2-a1730d703830",
+      "name": "Encerrar execucao com erro",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [
+        840,
+        440
+      ]
+    }
+  ],
+  "connections": {
+    "A cada hora": {
+      "main": [
+        [
+          {
+            "node": "Capturar Folhapress pela API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execucao manual": {
+      "main": [
+        [
+          {
+            "node": "Capturar Folhapress pela API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capturar Folhapress pela API": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Encerrar execucao com erro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "timezone": "America/Sao_Paulo",
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "versionId": "95419615-74ef-4f1a-9c72-2f47e741c81b",
+  "tags": []
+}

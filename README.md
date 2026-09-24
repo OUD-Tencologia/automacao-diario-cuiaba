@@ -1,62 +1,57 @@
-# Automação Editorial — MVP
+# Automação Editorial - Diário Cuiabá
 
-MVP para capturar conteúdo licenciado da Folhapress, preservar o TXT original
-no MinIO e organizar as notícias nas camadas físicas Bronze, Silver e Gold no
-PostgreSQL.
-
-O repositório segue a arquitetura aprovada em
-`1.Arquitetura de Design System/Arquitetura Central Editorial.html` e o plano
-operacional em `docs/PLANO_EXECUCAO_MVP.md`.
-
-## Estado atual
-
-O projeto está na Sprint 1. Nesta fase são definidos os contratos, a estrutura
-do repositório e a PoC de acesso à Folhapress. Não há ainda captura automática,
-API, banco ou ambiente de homologação implantado.
+MVP de captura de conteúdo licenciado da Folhapress. A automação preserva o
+TXT original no MinIO e prepara a única tabela editorial Gold no PostgreSQL.
 
 ## Arquitetura do MVP
 
 ```text
-n8n (cron de hora em hora)
-  -> scraper Folhapress (Python + Playwright)
-  -> Automation API (FastAPI)
-  -> MinIO (TXT original)
-  -> PostgreSQL: Bronze -> Silver -> Gold
-  -> porta do Trinix (mock até acesso e DDL serem fornecidos)
+n8n (cron horário)
+  -> Automation API privada
+  -> Folhapress: login, catálogo, metadados e TXT
+  -> MinIO: bronze-raw, original imutável
+  -> PostgreSQL: gold.articles
+  -> resumo local sugerido / CRUD editorial interno
+  -> porta Trinix desabilitada
 ```
 
-O n8n apenas orquestra. Todas as regras de negócio, deduplicação,
-idempotência, persistência e auditoria pertencem à Automation API.
+Não fazem parte deste corte: Bronze/Silver no PostgreSQL, front-end, Radar,
+Estadão, autenticação de pessoas, produção e integração real com Trinix.
 
-## Documentação de referência
+## Estado atual
 
-- `docs/PLANO_EXECUCAO_MVP.md`: cronograma aprovado, sprints, testes e gates.
-- `docs/CONTRATOS_MVP.md`: regras e contratos que orientam a implementação.
-- `docs/DECISOES_DE_ARQUITETURA.md`: decisões técnicas vigentes e pendências.
-- `output/backlog/Backlog_Automacao_Editorial.csv`: backlog aprovado.
+- Sprint 0 concluída: PoC Folhapress e serviços VPS validados.
+- Sprint 1 concluída: migration Gold única, repositório idempotente, guardas
+  contra exclusão física e armazenamento bruto com hash.
+- Sprint 2 concluída: captura Folhapress modular e idempotente. O teste externo
+  automatizado ficou pendente porque a origem resetou conexão antes do login.
+- Sprint 3 concluída: resumo Sumy LSA de até 150 caracteres, CRUD editorial,
+  descarte lógico e adaptador Trinix desabilitado.
+- A API local conversa com PostgreSQL e MinIO existentes na VPS; não há uma
+  segunda pilha local desses serviços.
+- Sprint 4 em preparação: workflow n8n versionado e inativo, Compose isolado
+  apenas para a API e runbook de homologação. A implantação/migration aguardam
+  acesso SSH à VPS e revalidação dos dados antes de qualquer DDL.
+- Revisão local atual: 66 testes unitários/contratuais e validação sintática do
+  Compose aprovados; o aceite integrado segue pendente da homologação remota.
 
-## Configuração local
+## Documentação
 
-1. Copie `.env.example` para `.env`.
-2. Preencha somente as variáveis necessárias para a etapa que será executada.
-3. Nunca versione `.env`, cookies, tokens, credenciais ou TXT licenciado.
+- `docs/PLANO_EXECUCAO_MVP_ENXUTO.md`: sprints, tarefas, aceite e commits.
+- `docs/REPLANEJAMENTO_MVP_ENXUTO.md`: decisões de escopo e arquitetura.
+- `docs/AUTOMATION_API.md`: health checks, captura e contrato CRUD.
+- `infra/migrations/README.md`: aplicação segura da migration Gold.
+- `docs/RUNBOOK_HOMOLOGACAO_MVP.md`: gates, implantação isolada, backup,
+  migration, ciclo manual e ativação do cron.
+- `workflows/n8n/folhapress-hourly-mvp.json`: workflow horário, com gatilho
+  manual e cron inativo por padrão.
 
-PostgreSQL, MinIO e n8n já existem na VPS de homologação e são reutilizados no
-desenvolvimento. A API será executada localmente e usará as configurações locais
-de acesso a esses serviços; ela será implantada na VPS somente na homologação.
+## Execução local
 
-## Convenções de trabalho
+1. Copie `.env.example` para `.env` e preencha as credenciais locais.
+2. Instale o projeto: `\.venv\Scripts\python.exe -m pip install -e .`
+3. Prepare os recursos locais: `\.venv\Scripts\python.exe -m playwright install chromium` e `\.venv\Scripts\python.exe -m nltk.downloader punkt_tab`
+4. Inicie a API: `\.venv\Scripts\python.exe -m uvicorn automation_api.main:app --host 127.0.0.1 --port 8000`
+5. Rode os testes: `powershell -ExecutionPolicy Bypass -File scripts/test_automation_api.ps1`
 
-- Branches: `feat/<ID-do-backlog>`, por exemplo `feat/PLN-01`.
-- Commits: Conventional Commits, por exemplo `docs(PLN-01): registra contratos do mvp`.
-- O encerramento de cada sprint exige testes aplicáveis, revisão de segredos e
-  uma tag (`sprint-01` a `sprint-05`).
-- Mudanças em contratos, schema, OpenAPI ou workflows exigem documentação e
-  testes compatíveis na mesma entrega.
-
-## Limites desta fase
-
-Front-end, autenticação de pessoas, imagens, Estadão, produção, domínio/DNS e
-integração real com Trinix não fazem parte do MVP atual. A integração Trinix
-só poderá escrever no destino após disponibilização de acesso, DDL, permissões
-e ambiente de homologação.
+Nunca versione `.env`, cookies, tokens, credenciais ou TXT licenciado.
