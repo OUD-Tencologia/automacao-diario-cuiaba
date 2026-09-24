@@ -6,7 +6,12 @@ import unittest
 
 sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
 
-from automation_api.domain.folhapress import ArticleReference, ExtractedArticle, FolhapressDataError
+from automation_api.domain.folhapress import (
+    ArticleReference,
+    ExtractedArticle,
+    FolhapressDataError,
+    normalize_location,
+)
 from automation_api.infrastructure.folhapress.extractor import (
     build_news_draft,
     extract_article_from_html,
@@ -58,7 +63,7 @@ NAO
         self.assertEqual(draft.source_id, "2599841")
         self.assertEqual(draft.eyebrow, "POLÍTICA NACIONAL")
         self.assertEqual(draft.title, "Título sintético da notícia")
-        self.assertEqual(draft.location, "Da FolhaPress - Cuiabá")
+        self.assertEqual(draft.location, "Cuiabá, MT")
         self.assertEqual(draft.published_at.tzinfo.key, "America/Sao_Paulo")
         self.assertNotIn("DESTAQUE", draft.content)
 
@@ -77,7 +82,7 @@ NAO
 
         self.assertEqual(draft.title, "Título JSON")
         self.assertEqual(draft.author, "Autora")
-        self.assertEqual(draft.location, "Da FolhaPress - Cuiabá")
+        self.assertEqual(draft.location, "Cuiabá, MT")
         self.assertEqual(draft.content, "Texto original sem cabecalho.")
 
     def test_generic_portal_title_is_rejected_instead_of_persisted(self) -> None:
@@ -104,8 +109,39 @@ NAO
         draft = build_news_draft(extracted, b"Brasilia, DF (FOLHAPRESS) - TXT original definitivo.")
 
         self.assertEqual(draft.content, "Brasilia, DF (FOLHAPRESS) - TXT original definitivo.")
-        self.assertEqual(draft.location, "Da FolhaPress - Brasilia")
+        self.assertEqual(draft.location, "Brasilia, DF")
         self.assertEqual(draft.raw_metadata["metadata_sources"]["content"], "txt")
+
+    def test_catalog_headline_is_used_before_the_page_title(self) -> None:
+        reference = ArticleReference.from_url(
+            "/texto/2599841",
+            base_url="https://folhapress.folha.com.br",
+            catalog_eyebrow="BRASIL-ONU",
+            catalog_title="Brasil se retira da plenária da ONU durante discurso de Netanyahu",
+        )
+        extracted = extract_article_from_html(
+            """
+            <h1>Folhapress</h1>
+            <time datetime="2026-09-24T14:35:00-03:00">agora</time>
+            """,
+            reference,
+        )
+
+        draft = build_news_draft(
+            extracted,
+            b"Brasilia, DF (FOLHAPRESS) - Corpo original da materia.",
+        )
+
+        self.assertEqual(draft.eyebrow, "BRASIL-ONU")
+        self.assertEqual(draft.title, reference.catalog_title)
+        self.assertEqual(draft.location, "Brasilia, DF")
+        self.assertEqual(draft.raw_metadata["metadata_sources"]["title"], "catalog")
+
+    def test_location_keeps_only_city_and_state(self) -> None:
+        self.assertEqual(
+            normalize_location("BRASÍLIA, DF (FOLHAPRESS) - Abertura da matéria."),
+            "Brasília, DF",
+        )
 
     def test_download_url_is_derived_from_the_article_id(self) -> None:
         self.assertEqual(

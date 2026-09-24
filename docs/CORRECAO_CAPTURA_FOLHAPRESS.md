@@ -13,6 +13,12 @@ editoriais inválidos.
   essa seção é usada; caso contrário, o TXT inteiro normalizado é usado.
 - `source_url` é a URL canônica `/texto/{id}` e precisa corresponder ao ID.
 - Título genérico do portal, data ausente ou corpo vazio impedem a gravação.
+- O chapéu é extraído do prefixo visível no catálogo: em
+  `BRASIL-ONU: Brasil se retira...`, `ds_chapeu=BRASIL-ONU` e
+  `ds_titulo=Brasil se retira...`. Esse título tem precedência sobre o título
+  técnico da página; um `TITULO:` explícito no TXT continua tendo precedência.
+- O local contém somente a localidade da abertura do texto, por exemplo
+  `Brasília, DF`; a aplicação não grava mais `Da FolhaPress - ...`.
 - Chapéu, autor e local só ficam nulos quando a fonte não os disponibilizar.
 - O resumo é opcional e é calculado apenas depois da validação do corpo.
 - O MinIO continua sendo somente `bronze-raw`; a tabela editorial única é
@@ -28,10 +34,12 @@ docker compose -f infra/compose/automation-api.compose.yml exec automation-api \
   python -m automation_api.cli.reconcile_folhapress --limit 100
 ```
 
-O comando seleciona apenas itens Folhapress em `FILA_EDITORIAL` com contrato
-antigo ou título genérico. Ele relê o TXT já existente no MinIO, valida o SHA-256,
-consulta novamente a página da matéria e atualiza a mesma linha. Não remove
-objetos, não cria duplicatas e não sobrescreve itens que saíram da fila.
+O comando seleciona itens Folhapress em `FILA_EDITORIAL` cuja versão de contrato
+seja anterior à vigente. Ele relê o TXT já existente no MinIO, valida o SHA-256,
+consulta novamente o catálogo (para recuperar chapéu/título) e a página da
+matéria e atualiza a mesma linha. Se uma matéria não estiver mais no catálogo,
+ela é reportada como `catalog_reference_missing` e não é alterada. O comando não
+remove objetos, não cria duplicatas e não sobrescreve itens que saíram da fila.
 
 Uma saída JSON contém somente contagens, IDs e códigos sanitizados. Não copie
 texto de notícia, cookies ou credenciais para logs e tickets.

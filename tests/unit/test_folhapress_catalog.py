@@ -81,6 +81,26 @@ class FolhapressCatalogTest(unittest.TestCase):
         self.assertIn("sr=25", page.urls[1])
         self.assertIn("tipo=textos", page.urls[0])
 
+    def test_captures_eyebrow_and_title_from_the_visible_catalog_link(self) -> None:
+        page = FakePage(
+            [
+                """
+                TEXTOS SERVIÇO NOTICIOSO
+                <a href="/texto/2599841"><span>18:31</span>
+                BRASIL-ONU: Brasil se retira da plenária da ONU durante discurso de Netanyahu
+                </a>
+                """
+            ]
+        )
+
+        article = FolhapressCatalog(page, replace(configuration(), max_pages_per_cycle=1)).list_articles()[0]
+
+        self.assertEqual(article.catalog_eyebrow, "BRASIL-ONU")
+        self.assertEqual(
+            article.catalog_title,
+            "Brasil se retira da plenária da ONU durante discurso de Netanyahu",
+        )
+
     def test_rejects_catalog_without_required_labels(self) -> None:
         page = FakePage(['<a href="/texto/101">Primeira</a>'])
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import unescape
+from html.parser import HTMLParser
 import re
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -9,9 +10,6 @@ from automation_api.domain.folhapress import ArticleReference, FolhapressDataErr
 from automation_api.infrastructure.folhapress.errors import FolhapressCatalogError
 from automation_api.infrastructure.folhapress.navigation import navigate_html, wait_for_catalog
 from automation_api.settings import FolhapressConfiguration
-
-
-_HREF_PATTERN = re.compile(r"href\s*=\s*(['\"])(?P<href>.*?)\1", re.IGNORECASE)
 
 
 class FolhapressCatalog:
@@ -80,13 +78,21 @@ class FolhapressCatalog:
 
     def _references_from_html(self, html: str) -> list[ArticleReference]:
         references: list[ArticleReference] = []
-        for match in _HREF_PATTERN.finditer(html):
-            href = unescape(match.group("href"))
+        parser = _CatalogAnchorParser()
+        parser.feed(html)
+        parser.close()
+        for href, anchor_text in parser.anchors:
             if "/texto/" not in href or "/baixar" in href:
                 continue
+            eyebrow, title = _split_catalog_headline(anchor_text)
             try:
                 references.append(
-                    ArticleReference.from_url(href, base_url=self._configuration.base_url)
+                    ArticleReference.from_url(
+                        href,
+                        base_url=self._configuration.base_url,
+                        catalog_eyebrow=eyebrow,
+                        catalog_title=title,
+                    )
                 )
             except FolhapressDataError:
                 continue
@@ -95,3 +101,47 @@ class FolhapressCatalog:
 
 def _text_from_html(html: str) -> str:
     return re.sub(r"<[^>]+>", " ", unescape(html))
+
+
+def _split_catalog_headline(value: str) -> tuple[str | None, str | None]:
+    """Separa ``CHAPÉU: título`` exatamente como exibido no catálogo.
+
+    O horário pode fazer parte do texto do link em algumas variações do HTML;
+    ele não é chapéu nem título e por isso é removido antes da separação.
+    """
+
+    normalized = " ".join(value.split())
+    normalized = re.sub(r"^(?:\d{1,2}:\d{2}\s+)+", "", normalized)
+    eyebrow, separator, title = normalized.partition(":")
+    if separator and eyebrow.strip() and title.strip():
+        return eyebrow.strip(), title.strip()
+    return None, normalized or None
+
+
+class _CatalogAnchorParser(HTMLParser):
+    """Lê o texto visível de cada link sem depender de regex sobre HTML."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.anchors: list[tuple[str, str]] = []
+        self._href: str | None = None
+        self._text_parts: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.casefold() != "a" or self._href is not None:
+            return
+        attributes = {name.casefold(): value or "" for name, value in attrs}
+        href = attributes.get("href", "").strip()
+        if href:
+            self._href = href
+            self._text_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._href is not None:
+            self._text_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.casefold() == "a" and self._href is not None:
+            self.anchors.append((self._href, "".join(self._text_parts)))
+            self._href = None
+            self._text_parts = []

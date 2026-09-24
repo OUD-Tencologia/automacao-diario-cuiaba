@@ -109,7 +109,7 @@ class GoldNewsRepository:
         )
 
     def find_reconciliation_candidates(self, *, limit: int) -> list[ReconciliationCandidate]:
-        """Seleciona somente filas ainda nÃ£o editadas e gravadas pelo contrato antigo."""
+        """Seleciona filas ainda não editadas gravadas antes do contrato vigente."""
 
         statement = text(
             """
@@ -117,10 +117,7 @@ class GoldNewsRepository:
             FROM gold.articles
             WHERE source = 'folhapress'
               AND status = 'FILA_EDITORIAL'
-              AND (
-                    lower(ds_titulo) IN ('folhapress', 'folha press')
-                    OR COALESCE(raw_metadata->>'extraction_contract_version', '0') = '0'
-                  )
+              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') <> '3'
             ORDER BY created_at ASC, source, id
             LIMIT :limit
             """
@@ -162,10 +159,7 @@ class GoldNewsRepository:
               AND id = :source_id
               AND source = 'folhapress'
               AND status = 'FILA_EDITORIAL'
-              AND (
-                    lower(ds_titulo) IN ('folhapress', 'folha press')
-                    OR COALESCE(raw_metadata->>'extraction_contract_version', '0') = '0'
-                  )
+              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') <> '3'
             RETURNING source, id
             """
         )

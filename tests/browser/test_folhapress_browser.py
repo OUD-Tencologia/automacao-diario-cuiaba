@@ -89,7 +89,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/textos':
             body = '<html><body>' + LABELS
             if mode != 'empty':
-                body += '<a href="/texto/101">Sintetica</a>'
+                body += '<a href="/texto/101">Noticia sintetica</a>'
             body += '</body></html>'
             self.send_body(body.encode(), delay=0.3 if mode == 'slow' else 1 if mode == 'stuck' else 0)
             return

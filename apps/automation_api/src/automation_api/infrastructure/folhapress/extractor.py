@@ -75,7 +75,7 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
     semantic = _SemanticContentParser()
     semantic.feed(html)
 
-    title_candidates = (
+    page_title_candidates = (
         semantic.value_for(_TITLE_HINT_PATTERN, tags=("h1", "h2", "h3")),
         _json_value(json_ld, "headline"),
         parser.meta.get("property:og:title"),
@@ -83,7 +83,10 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         semantic.heading_value(),
         semantic.any_heading_value(),
     )
-    title = _first_specific_value(*title_candidates) or _first_value(*title_candidates)
+    page_title = _first_specific_value(*page_title_candidates) or _first_value(*page_title_candidates)
+    title = _first_specific_value(reference.catalog_title, page_title) or _first_value(
+        reference.catalog_title, page_title
+    )
     raw_date = _first_value(
         parser.meta.get("property:article:published_time"),
         parser.meta.get("name:date"),
@@ -103,11 +106,12 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         parser.meta.get("property:article:author"),
         _json_author(json_ld),
     )
-    eyebrow = _first_value(
+    page_eyebrow = _first_value(
         semantic.value_for(_EYEBROW_HINT_PATTERN),
         parser.meta.get("property:article:section"),
         _json_value(json_ld, "articleSection"),
     )
+    eyebrow = _first_value(reference.catalog_eyebrow, page_eyebrow)
 
     return ExtractedArticle(
         reference=reference,
@@ -118,15 +122,18 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         location=normalize_location(content),
         content=content,
         raw_metadata={
-            "extraction_contract_version": 2,
-            "page_title_found": bool(title),
+            "extraction_contract_version": 3,
+            "page_title_found": bool(page_title),
+            "catalog_title_found": bool(reference.catalog_title),
             "page_published_at_found": bool(raw_date),
             "page_author_found": bool(author),
+            "page_eyebrow_found": bool(page_eyebrow),
+            "catalog_eyebrow_found": bool(reference.catalog_eyebrow),
             "metadata_sources": {
-                "title": "article_page" if title else None,
+                "title": "catalog" if reference.catalog_title else "article_page" if title else None,
                 "published_at": "article_page" if raw_date else None,
                 "author": "article_page" if author else None,
-                "eyebrow": "article_page" if eyebrow else None,
+                "eyebrow": "catalog" if reference.catalog_eyebrow else "article_page" if eyebrow else None,
             },
         },
     )
@@ -137,8 +144,11 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
 
     txt = decode_original_text(original_text)
     fields = _labeled_txt_fields(txt)
-    title = _first_specific_value(fields.get("title"), extracted.title) or _first_value(
+    title = _first_specific_value(
+        fields.get("title"), extracted.reference.catalog_title, extracted.title
+    ) or _first_value(
         fields.get("title") if isinstance(fields.get("title"), str) else None,
+        extracted.reference.catalog_title,
         extracted.title,
     )
     published_at = _first_datetime(fields.get("published_at"), extracted.published_at)
@@ -182,7 +192,9 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
         title=title,
         content=content,
         source_url=extracted.reference.article_url,
-        eyebrow=_first_value(fields.get("eyebrow"), extracted.eyebrow),
+        eyebrow=_first_value(
+            fields.get("eyebrow"), extracted.reference.catalog_eyebrow, extracted.eyebrow
+        ),
         author=_first_value(fields.get("author"), extracted.author),
         location=location,
         raw_metadata={
@@ -191,7 +203,11 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
             "source_id": extracted.reference.source_id,
             "metadata_sources": {
                 **dict(extracted.raw_metadata.get("metadata_sources", {})),
-                "title": "txt" if fields.get("title") and title == fields.get("title") else "article_page",
+                "title": (
+                    "txt" if fields.get("title") and title == fields.get("title")
+                    else "catalog" if extracted.reference.catalog_title and title == extracted.reference.catalog_title
+                    else "article_page"
+                ),
                 "published_at": "txt" if fields.get("published_at") else "article_page",
                 "content": "txt",
                 "location": "txt" if fields.get("location") else "txt_opening",
@@ -498,12 +514,12 @@ def _is_generic_portal_title(value: str | None) -> bool:
 
 
 def _location_from_txt_opening(content: str) -> str | None:
-    opening = re.match(
-        r"^.{1,180}?\(FOLHAPRESS\)\s*[-â€“]",
-        " ".join(content.split()),
-        flags=re.IGNORECASE,
-    )
-    return normalize_location(opening.group(0)) if opening else None
+    normalized = " ".join(content.split())
+    # Não trate o corpo inteiro como local quando o TXT não começa pela
+    # abertura editorial. Nesse caso, o metadado extraído da página prevalece.
+    if not re.match(r"^[^()\n]{1,120}\(FOLHAPRESS\)\s*[-–—]", normalized, re.IGNORECASE):
+        return None
+    return normalize_location(normalized)
 
 
 def _first_datetime(value: object, fallback: datetime | None) -> datetime | None:

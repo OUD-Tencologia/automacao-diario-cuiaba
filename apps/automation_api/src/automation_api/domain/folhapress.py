@@ -32,6 +32,11 @@ class ArticleReference:
 
     source_id: str
     article_url: str
+    # O catálogo da Folhapress contém o título editorial mais confiável que o
+    # título técnico da página. Esses valores são somente metadados da
+    # descoberta; a chave de idempotência continua sendo source_id.
+    catalog_eyebrow: str | None = None
+    catalog_title: str | None = None
 
     def __post_init__(self) -> None:
         if not self.source_id.isdigit():
@@ -45,8 +50,21 @@ class ArticleReference:
                 diagnostic_code="article_url_id_mismatch",
             )
 
+        for attribute in ("catalog_eyebrow", "catalog_title"):
+            value = getattr(self, attribute)
+            if value is not None:
+                normalized = " ".join(value.split()) or None
+                object.__setattr__(self, attribute, normalized)
+
     @classmethod
-    def from_url(cls, article_url: str, *, base_url: str) -> ArticleReference:
+    def from_url(
+        cls,
+        article_url: str,
+        *,
+        base_url: str,
+        catalog_eyebrow: str | None = None,
+        catalog_title: str | None = None,
+    ) -> ArticleReference:
         absolute_url = urljoin(base_url.rstrip("/") + "/", article_url)
         absolute_url = absolute_url.split("?", 1)[0]
         match = _ARTICLE_PATH_PATTERN.search(urlsplit(absolute_url).path)
@@ -55,7 +73,12 @@ class ArticleReference:
                 "URL não possui o ID de uma matéria Folhapress",
                 diagnostic_code="article_url_missing_id",
             )
-        return cls(source_id=match.group("id"), article_url=absolute_url)
+        return cls(
+            source_id=match.group("id"),
+            article_url=absolute_url,
+            catalog_eyebrow=catalog_eyebrow,
+            catalog_title=catalog_title,
+        )
 
     @property
     def download_url(self) -> str:
@@ -77,19 +100,33 @@ class ExtractedArticle:
 
 
 def normalize_location(value: str | None) -> str | None:
-    """Converte a abertura da agência em um local adequado à interface editorial."""
+    """Extrai somente ``Cidade, UF`` da abertura editorial da Folhapress."""
 
     if not value:
         return None
 
     normalized = " ".join(value.split())
     match = re.match(
-        r"^(?P<place>.+?)(?:,\s*[A-Z]{2})?\s*\(FOLHAPRESS\)\s*[-–]",
+        r"^(?P<city>[^,()\n]+?)(?:\s*,\s*(?P<state>[A-Z]{2}))?\s*"
+        r"\(FOLHAPRESS\)\s*[-–—]",
         normalized,
         flags=re.IGNORECASE,
     )
-    if not match:
-        return normalized or None
+    if match:
+        return _format_location(match.group("city"), match.group("state"))
 
-    place = " ".join(match.group("place").split()).title()
-    return f"Da FolhaPress - {place}" if place else None
+    explicit_match = re.match(
+        r"^(?P<city>[^,()\n]+?)(?:\s*,\s*(?P<state>[A-Z]{2}))?\s*$",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    if explicit_match:
+        return _format_location(explicit_match.group("city"), explicit_match.group("state"))
+    return normalized or None
+
+
+def _format_location(city: str, state: str | None) -> str | None:
+    normalized_city = " ".join(city.split()).title()
+    if not normalized_city:
+        return None
+    return f"{normalized_city}, {state.upper()}" if state else normalized_city

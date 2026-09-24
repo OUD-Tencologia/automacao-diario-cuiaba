@@ -5,11 +5,12 @@ from hashlib import sha256
 import logging
 
 from automation_api.application.editorial_summary import SumyLsaEditorialSummary
-from automation_api.domain.folhapress import ArticleReference, FolhapressDataError
+from automation_api.domain.folhapress import FolhapressDataError
 from automation_api.infrastructure.folhapress import (
     ArticleExtractor,
     FolhapressAuth,
     FolhapressBrowserSession,
+    FolhapressCatalog,
     SourceHealth,
 )
 from automation_api.infrastructure.gold_news_repository import GoldNewsRepository
@@ -69,6 +70,13 @@ def run_folhapress_reconciliation(settings: Settings, *, limit: int = 100) -> Re
         with FolhapressBrowserSession(configuration) as session:
             SourceHealth(session.page, configuration).check()
             FolhapressAuth(session.page, configuration).login()
+            # O chapéu e o título editorial vêm do link visível do catálogo,
+            # não da página técnica da matéria. Guarde a referência descoberta
+            # para que a reconciliação use exatamente a mesma regra da captura.
+            catalog_references = {
+                reference.source_id: reference
+                for reference in FolhapressCatalog(session.page, configuration).list_articles()
+            }
             extractor = ArticleExtractor(
                 session.page,
                 timeout_ms=configuration.navigation_timeout_ms,
@@ -83,10 +91,12 @@ def run_folhapress_reconciliation(settings: Settings, *, limit: int = 100) -> Re
                             "O TXT armazenado nÃ£o corresponde ao hash da fila",
                             diagnostic_code="raw_hash_mismatch",
                         )
-                    reference = ArticleReference.from_url(
-                        candidate.source_url,
-                        base_url=configuration.base_url,
-                    )
+                    reference = catalog_references.get(candidate.source_id)
+                    if reference is None:
+                        raise FolhapressDataError(
+                            "A matéria não está no catálogo atual para extrair o chapéu",
+                            diagnostic_code="catalog_reference_missing",
+                        )
                     extracted = extractor.extract(reference)
                     draft = extractor.build_draft(extracted, original_txt)
                     try:
