@@ -41,5 +41,6 @@ volumes/
 __pycache__/
 .pytest_cache/
 .venv/
+*.egg-info/
 .DS_Store
 Thumbs.db
