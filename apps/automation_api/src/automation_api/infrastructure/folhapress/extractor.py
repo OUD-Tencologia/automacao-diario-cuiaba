@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from dataclasses import dataclass
 from html import unescape
 from html.parser import HTMLParser
 import json
@@ -27,6 +28,12 @@ _TAG_TEXT_PATTERN = re.compile(
     r"<(?:h1|p|time)\b[^>]*>(?P<text>.*?)</(?:h1|p|time)>",
     re.IGNORECASE | re.DOTALL,
 )
+_GENERIC_PORTAL_TITLES = frozenset({"folhapress", "folha press"})
+_TITLE_HINT_PATTERN = re.compile(r"(?:title|titulo|headline|manchete)", re.IGNORECASE)
+_AUTHOR_HINT_PATTERN = re.compile(r"(?:author|autor|byline)", re.IGNORECASE)
+_EYEBROW_HINT_PATTERN = re.compile(r"(?:eyebrow|chapeu|chap[eé]u|section|category|editoria)", re.IGNORECASE)
+_DATE_HINT_PATTERN = re.compile(r"(?:date|data|published|publish|time)", re.IGNORECASE)
+_CONTENT_HINT_PATTERN = re.compile(r"(?:article-body|article-content|text-content|text-body|conteudo|content)", re.IGNORECASE)
 _DISPLAYED_DATETIME_PATTERN = re.compile(
     r"(?P<date>\d{1,2}/\d{1,2}/\d{4})\s*(?:[-–—,]|\b(?:a|à|as|às)\b)?\s*"
     r"(?P<hour>\d{1,2})(?:h|:)(?P<minute>\d{2})(?::(?P<second>\d{2}))?",
@@ -65,14 +72,18 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
     parser = _MetadataParser()
     parser.feed(html)
     json_ld = _find_json_ld(parser.json_ld)
-    tag_text = _tag_texts(html)
+    semantic = _SemanticContentParser()
+    semantic.feed(html)
 
-    title = _first_value(
+    title_candidates = (
+        semantic.value_for(_TITLE_HINT_PATTERN, tags=("h1", "h2", "h3")),
+        _json_value(json_ld, "headline"),
         parser.meta.get("property:og:title"),
         parser.meta.get("name:twitter:title"),
-        _json_value(json_ld, "headline"),
-        tag_text[0] if tag_text else None,
+        semantic.heading_value(),
+        semantic.any_heading_value(),
     )
+    title = _first_specific_value(*title_candidates) or _first_value(*title_candidates)
     raw_date = _first_value(
         parser.meta.get("property:article:published_time"),
         parser.meta.get("name:date"),
@@ -84,14 +95,16 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
     )
     content = _first_value(
         _json_value(json_ld, "articleBody"),
-        "\n".join(tag_text[1:]) if len(tag_text) > 1 else None,
+        semantic.value_for(_CONTENT_HINT_PATTERN),
     )
     author = _first_value(
+        semantic.value_for(_AUTHOR_HINT_PATTERN),
         parser.meta.get("name:author"),
         parser.meta.get("property:article:author"),
         _json_author(json_ld),
     )
     eyebrow = _first_value(
+        semantic.value_for(_EYEBROW_HINT_PATTERN),
         parser.meta.get("property:article:section"),
         _json_value(json_ld, "articleSection"),
     )
@@ -105,9 +118,16 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         location=normalize_location(content),
         content=content,
         raw_metadata={
+            "extraction_contract_version": 2,
             "page_title_found": bool(title),
             "page_published_at_found": bool(raw_date),
             "page_author_found": bool(author),
+            "metadata_sources": {
+                "title": "article_page" if title else None,
+                "published_at": "article_page" if raw_date else None,
+                "author": "article_page" if author else None,
+                "eyebrow": "article_page" if eyebrow else None,
+            },
         },
     )
 
@@ -117,10 +137,27 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
 
     txt = decode_original_text(original_text)
     fields = _labeled_txt_fields(txt)
-    title = _first_value(fields.get("title"), extracted.title)
+    title = _first_specific_value(fields.get("title"), extracted.title) or _first_value(
+        fields.get("title") if isinstance(fields.get("title"), str) else None,
+        extracted.title,
+    )
     published_at = _first_datetime(fields.get("published_at"), extracted.published_at)
-    content = _first_value(fields.get("content"), extracted.content, txt)
-    location = normalize_location(_first_value(fields.get("location"), extracted.location, content))
+    # O TXT e o original editorial. HTML serve para metadados; somente um TXT
+    # explicitamente estruturado pode substituir o corpo pelo campo DESCRICAO.
+    content = _first_value(fields.get("content"), txt)
+    explicit_location = _first_value(fields.get("location"))
+    location = (
+        normalize_location(explicit_location)
+        if explicit_location
+        else _location_from_txt_opening(content) or extracted.location
+    )
+
+    if _is_generic_portal_title(title):
+        raise FolhapressDataError(
+            "A pÃ¡gina retornou um tÃ­tulo genÃ©rico do portal",
+            diagnostic_code="generic_article_title",
+            missing_fields=("title",),
+        )
 
     missing_fields = tuple(
         field_name
@@ -152,6 +189,13 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
             **dict(extracted.raw_metadata),
             "download_url": extracted.reference.download_url,
             "source_id": extracted.reference.source_id,
+            "metadata_sources": {
+                **dict(extracted.raw_metadata.get("metadata_sources", {})),
+                "title": "txt" if fields.get("title") and title == fields.get("title") else "article_page",
+                "published_at": "txt" if fields.get("published_at") else "article_page",
+                "content": "txt",
+                "location": "txt" if fields.get("location") else "txt_opening",
+            },
         },
     )
 
@@ -262,6 +306,104 @@ class _MetadataParser(HTMLParser):
             self._text_info_div_stack.pop()
 
 
+@dataclass
+class _SemanticNode:
+    tag: str
+    attributes: dict[str, str]
+    text_parts: list[str]
+
+    @property
+    def text(self) -> str:
+        return " ".join("".join(self.text_parts).split())
+
+    @property
+    def descriptor(self) -> str:
+        return " ".join(
+            value for key, value in self.attributes.items()
+            if key in {"class", "id", "itemprop", "data-testid", "data-test"}
+        )
+
+
+class _SemanticContentParser(HTMLParser):
+    """Coleta apenas candidatos editoriais; nunca usa a navegaÃ§Ã£o do portal."""
+
+    _TEXT_TAGS = frozenset({"h1", "h2", "h3", "p", "span", "time", "div", "section"})
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._stack: list[tuple[str, _SemanticNode | None]] = []
+        self.nodes: list[_SemanticNode] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        normalized_tag = tag.casefold()
+        attributes = {name.casefold(): value or "" for name, value in attrs}
+        descriptor = " ".join(
+            value for key, value in attributes.items()
+            if key in {"class", "id", "itemprop", "data-testid", "data-test"}
+        )
+        is_candidate = (
+            normalized_tag in {"h1", "h2", "h3", "time"}
+            or bool(
+                normalized_tag in self._TEXT_TAGS
+                and any(pattern.search(descriptor) for pattern in (
+                    _TITLE_HINT_PATTERN,
+                    _AUTHOR_HINT_PATTERN,
+                    _EYEBROW_HINT_PATTERN,
+                    _DATE_HINT_PATTERN,
+                    _CONTENT_HINT_PATTERN,
+                ))
+            )
+        )
+        node = _SemanticNode(normalized_tag, attributes, []) if is_candidate else None
+        self._stack.append((normalized_tag, node))
+        if node is not None:
+            self.nodes.append(node)
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
+
+    def handle_data(self, data: str) -> None:
+        for _, node in self._stack:
+            if node is not None:
+                node.text_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        # HTML da origem pode conter marcaÃ§Ã£o imperfeita; descarta atÃ© o fim
+        # correspondente para evitar que texto posterior contamine um candidato.
+        normalized_tag = tag.casefold()
+        for index in range(len(self._stack) - 1, -1, -1):
+            stack_tag, _ = self._stack[index]
+            if stack_tag == normalized_tag:
+                del self._stack[index:]
+                return
+
+    def value_for(self, hint: re.Pattern[str], *, tags: tuple[str, ...] = ()) -> str | None:
+        candidates: list[tuple[int, str]] = []
+        for node in self.nodes:
+            text = node.text
+            if not text:
+                continue
+            descriptor = node.descriptor
+            if hint.search(descriptor):
+                candidates.append((100, text))
+            elif tags and node.tag in tags:
+                candidates.append((20, text))
+        for _, value in sorted(candidates, key=lambda item: (-item[0], -len(item[1]))):
+            if not _is_generic_portal_title(value):
+                return value
+        return None
+
+    def heading_value(self) -> str | None:
+        return self.value_for(re.compile(r"a^"), tags=("h1", "h2", "h3"))
+
+    def any_heading_value(self) -> str | None:
+        for node in self.nodes:
+            if node.tag in {"h1", "h2", "h3"} and node.text:
+                return node.text
+        return None
+
+
 def _labeled_txt_fields(text: str) -> dict[str, str | datetime]:
     matches = list(_TEXT_FIELD_PATTERN.finditer(text))
     fields: dict[str, str | datetime] = {}
@@ -302,14 +444,6 @@ def _semantic_published_values(values: list[str]) -> tuple[str, ...]:
     )
 
 
-def _tag_texts(html: str) -> list[str]:
-    return [
-        _clean_html_text(match.group("text"))
-        for match in _TAG_TEXT_PATTERN.finditer(html)
-        if _clean_html_text(match.group("text"))
-    ]
-
-
 def _clean_html_text(value: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", unescape(value)).split())
 
@@ -347,6 +481,29 @@ def _first_value(*values: str | None) -> str | None:
         if value and value.strip():
             return value.strip()
     return None
+
+
+def _first_specific_value(*values: object) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value.strip() and not _is_generic_portal_title(value):
+            return value.strip()
+    return None
+
+
+def _is_generic_portal_title(value: str | None) -> bool:
+    if not value:
+        return False
+    normalized = " ".join(value.casefold().split())
+    return normalized in _GENERIC_PORTAL_TITLES
+
+
+def _location_from_txt_opening(content: str) -> str | None:
+    opening = re.match(
+        r"^.{1,180}?\(FOLHAPRESS\)\s*[-â€“]",
+        " ".join(content.split()),
+        flags=re.IGNORECASE,
+    )
+    return normalize_location(opening.group(0)) if opening else None
 
 
 def _first_datetime(value: object, fallback: datetime | None) -> datetime | None:

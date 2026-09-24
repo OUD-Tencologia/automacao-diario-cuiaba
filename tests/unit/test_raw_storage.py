@@ -31,7 +31,23 @@ class FakeS3Client:
         self.objects[(kwargs["Bucket"], kwargs["Key"])] = {
             "ContentLength": len(kwargs["Body"]),
             "Metadata": kwargs["Metadata"],
+            "Body": kwargs["Body"],
         }
+
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+        try:
+            content = self.objects[(Bucket, Key)]["Body"]
+        except KeyError as error:
+            raise ClientError({"Error": {"Code": "404"}}, "GetObject") from error
+        return {"Body": _FakeBody(content)}
+
+
+class _FakeBody:
+    def __init__(self, content: bytes) -> None:
+        self._content = content
+
+    def read(self) -> bytes:
+        return self._content
 
 
 class RawStorageTest(unittest.TestCase):
@@ -67,3 +83,11 @@ class RawStorageTest(unittest.TestCase):
 
         with self.assertRaises(RawStorageError):
             self.storage.store("folhapress", "2599841", b"texto sintetico")
+
+    def test_load_reads_an_existing_original_without_writing(self) -> None:
+        stored = self.storage.store("folhapress", "2599841", b"texto sintetico")
+
+        content = self.storage.load(stored.object_key)
+
+        self.assertEqual(content, b"texto sintetico")
+        self.assertEqual(self.client.put_calls, 1)

@@ -16,6 +16,8 @@ class S3Client(Protocol):
 
     def head_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
 
+    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
+
     def put_object(self, **kwargs: Any) -> Any: ...
 
 
@@ -95,6 +97,16 @@ class RawStorage:
             sha256=digest,
             size_bytes=len(content),
         )
+
+    def load(self, object_key: str) -> bytes:
+        """LÃª um original jÃ¡ armazenado, sem criar ou sobrescrever objetos."""
+
+        response = self._client.get_object(Bucket=self._bucket_name, Key=object_key)
+        body = response.get("Body")
+        content = body.read() if body is not None else b""
+        if not isinstance(content, bytes) or not content:
+            raise RawStorageError("O objeto MinIO nÃ£o possui TXT vÃ¡lido")
+        return content
 
 
 def build_s3_client(

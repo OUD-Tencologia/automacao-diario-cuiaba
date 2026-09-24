@@ -9,7 +9,10 @@ import unittest
 sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
 
 from automation_api.domain.news import NewsDraft, NewsStatus, StoredRawObject
-from automation_api.infrastructure.gold_news_repository import GoldNewsRepository
+from automation_api.infrastructure.gold_news_repository import (
+    GoldNewsRepository,
+    ReconciliationCandidate,
+)
 
 
 class FakeMappings:
@@ -152,6 +155,14 @@ class GoldNewsRepositoryTest(unittest.TestCase):
         self.assertEqual(items[0].status, NewsStatus.QUEUE)
         self.assertEqual(items[0].ds_resumo, "Resumo sintético.")
 
+    def test_list_without_status_does_not_bind_an_untyped_null(self) -> None:
+        engine = FakeEngine(None)
+
+        GoldNewsRepository(engine).list_articles(status=None, limit=10, offset=0)
+
+        self.assertNotIn("(:status IS NULL", engine.connection.statement)
+        self.assertNotIn("status", engine.connection.parameters)
+
     def test_update_uses_whitelisted_editorial_columns_only(self) -> None:
         engine = FakeEngine(None)
 
@@ -183,3 +194,24 @@ class GoldNewsRepositoryTest(unittest.TestCase):
             GoldNewsRepository(engine).update_article(
                 "folhapress", "2599841", {"raw_sha256": "a" * 64}
             )
+
+    def test_reconciliation_updates_only_the_unreviewed_legacy_queue(self) -> None:
+        engine = FakeEngine({"source": "folhapress", "id": "2599841"})
+        candidate = ReconciliationCandidate(
+            source="folhapress",
+            source_id="2599841",
+            source_url="https://folhapress.example/texto/2599841",
+            minio_object_key="folhapress/2599841/" + "a" * 64 + ".txt",
+            raw_sha256="a" * 64,
+        )
+
+        repaired = GoldNewsRepository(engine).repair_queue_item(
+            candidate,
+            build_draft(),
+            "Resumo sintetico.",
+        )
+
+        self.assertTrue(repaired)
+        self.assertIn("status = 'FILA_EDITORIAL'", engine.connection.statement)
+        self.assertIn("extraction_contract_version", engine.connection.statement)
+        self.assertNotIn("minio_object_key =", engine.connection.statement)

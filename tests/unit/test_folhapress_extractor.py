@@ -78,7 +78,34 @@ NAO
         self.assertEqual(draft.title, "Título JSON")
         self.assertEqual(draft.author, "Autora")
         self.assertEqual(draft.location, "Da FolhaPress - Cuiabá")
-        self.assertEqual(draft.content, "Cuiabá, MT (FOLHAPRESS) - Corpo.")
+        self.assertEqual(draft.content, "Texto original sem cabecalho.")
+
+    def test_generic_portal_title_is_rejected_instead_of_persisted(self) -> None:
+        extracted = extract_article_from_html(
+            '<h1>Folhapress</h1><time datetime="2026-09-24T14:35:00-03:00">agora</time>',
+            self.reference,
+        )
+
+        with self.assertRaises(FolhapressDataError) as error:
+            build_news_draft(extracted, b"Texto original da materia.")
+
+        self.assertEqual(error.exception.diagnostic_code, "generic_article_title")
+
+    def test_txt_body_is_preferred_to_generic_html_content(self) -> None:
+        extracted = extract_article_from_html(
+            """
+            <meta property="og:title" content="Titulo especifico">
+            <time datetime="2026-09-24T14:35:00-03:00">agora</time>
+            <div class="article-content">HTML generico que nao e o original.</div>
+            """,
+            self.reference,
+        )
+
+        draft = build_news_draft(extracted, b"Brasilia, DF (FOLHAPRESS) - TXT original definitivo.")
+
+        self.assertEqual(draft.content, "Brasilia, DF (FOLHAPRESS) - TXT original definitivo.")
+        self.assertEqual(draft.location, "Da FolhaPress - Brasilia")
+        self.assertEqual(draft.raw_metadata["metadata_sources"]["content"], "txt")
 
     def test_download_url_is_derived_from_the_article_id(self) -> None:
         self.assertEqual(
