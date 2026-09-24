@@ -33,8 +33,8 @@ class FolhapressCatalog:
                 html = self._page.content()
             except FolhapressCatalogError:
                 raise
-            except Exception as error:
-                raise FolhapressCatalogError("Não foi possível ler o catálogo Folhapress") from error
+            except Exception:
+                raise FolhapressCatalogError("Não foi possível ler o catálogo Folhapress") from None
 
             if page_number == 0:
                 self._assert_required_labels(html)

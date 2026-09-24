@@ -25,8 +25,8 @@ class TxtDownloader:
             body = response.body()
         except FolhapressDownloadError:
             raise
-        except Exception as error:
-            raise FolhapressDownloadError("Não foi possível baixar o TXT Folhapress") from error
+        except Exception:
+            raise FolhapressDownloadError("Não foi possível baixar o TXT Folhapress") from None
 
         if not body or _looks_like_html(body):
             raise FolhapressDownloadError("O download Folhapress não retornou um TXT válido")

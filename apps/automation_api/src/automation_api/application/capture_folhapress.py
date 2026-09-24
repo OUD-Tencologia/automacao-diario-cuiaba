@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Protocol
 
 from automation_api.domain.folhapress import ArticleReference, ExtractedArticle
@@ -29,7 +30,16 @@ class RawStoragePort(Protocol):
 class NewsRepositoryPort(Protocol):
     def exists(self, source: str, source_id: str) -> bool: ...
 
-    def create_if_absent(self, draft: NewsDraft, raw: StoredRawObject) -> PersistedNews: ...
+    def create_if_absent(
+        self,
+        draft: NewsDraft,
+        raw: StoredRawObject,
+        summary: str | None,
+    ) -> PersistedNews: ...
+
+
+class EditorialSummaryPort(Protocol):
+    def generate(self, content: str) -> str | None: ...
 
 
 @dataclass(frozen=True)
@@ -58,12 +68,14 @@ class CaptureFolhapress:
         downloader: TxtDownloaderPort,
         raw_storage: RawStoragePort,
         repository: NewsRepositoryPort,
+        summary_generator: EditorialSummaryPort,
     ) -> None:
         self._catalog = catalog
         self._extractor = extractor
         self._downloader = downloader
         self._raw_storage = raw_storage
         self._repository = repository
+        self._summary_generator = summary_generator
 
     def run(self) -> CaptureResult:
         references = self._catalog.list_articles()
@@ -80,13 +92,21 @@ class CaptureFolhapress:
                 extracted = self._extractor.extract(reference)
                 original_txt = self._downloader.download(reference)
                 raw = self._raw_storage.store("folhapress", reference.source_id, original_txt)
+                draft = self._extractor.build_draft(extracted, original_txt)
                 persisted = self._repository.create_if_absent(
-                    self._extractor.build_draft(extracted, original_txt), raw
+                    draft,
+                    raw,
+                    self._generate_summary(draft),
                 )
-            except Exception:
+            except Exception as error:
                 # Não propagamos HTML/TXT/credencial em logs ou resposta. O ID é
                 # suficiente para diagnóstico e o erro torna o ciclo reexecutável.
                 failures.append(reference.source_id)
+                logging.getLogger(__name__).warning(
+                    "Captura Folhapress falhou para id=%s tipo=%s",
+                    reference.source_id,
+                    type(error).__name__,
+                )
                 continue
 
             if persisted.created:
@@ -101,3 +121,14 @@ class CaptureFolhapress:
             captured=captured,
             skipped_existing=skipped_existing,
         )
+
+    def _generate_summary(self, draft: NewsDraft) -> str | None:
+        try:
+            return self._summary_generator.generate(draft.content)
+        except Exception:
+            logging.getLogger(__name__).warning(
+                "Resumo editorial não gerado para source=%s id=%s",
+                draft.source,
+                draft.source_id,
+            )
+            return None

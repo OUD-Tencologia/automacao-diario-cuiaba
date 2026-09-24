@@ -45,8 +45,8 @@ class FolhapressAuth:
                 self._configuration.catalog_url,
                 wait_until="domcontentloaded",
             )
-        except Exception as error:
-            raise FolhapressAuthenticationError("Não foi possível autenticar na Folhapress") from error
+        except Exception:
+            raise FolhapressAuthenticationError("Não foi possível autenticar na Folhapress") from None
 
         status_code = getattr(response, "status", None)
         password_inputs = self._page.locator(self._DEFAULT_PASSWORD_SELECTOR).count()

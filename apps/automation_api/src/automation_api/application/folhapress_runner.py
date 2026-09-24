@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from automation_api.application.capture_folhapress import CaptureFolhapress, CaptureResult
+from automation_api.application.editorial_summary import SumyLsaEditorialSummary
 from automation_api.infrastructure.folhapress import (
     ArticleExtractor,
     FolhapressAuth,
@@ -47,6 +48,7 @@ def run_folhapress_capture(settings: Settings) -> CaptureResult:
                 ),
                 raw_storage=raw_storage,
                 repository=repository,
+                summary_generator=SumyLsaEditorialSummary(),
             ).run()
     finally:
         engine.dispose()

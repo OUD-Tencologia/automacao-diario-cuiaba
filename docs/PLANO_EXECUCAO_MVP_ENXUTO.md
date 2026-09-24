@@ -122,6 +122,11 @@ não duplica; falha de login, página, download ou MinIO não cria item incomple
 
 **Objetivo:** tornar a notícia utilizável pelo futuro Admin, sem criar front-end.
 
+**Estado: concluída.** Sumy LSA instalado localmente; NumPy e `punkt_tab`
+incluídos como dependências de produção e preparação da imagem. CRUD de lista,
+detalhe, edição e descarte implementado; `PUBLICADO` continua bloqueado sem
+Trinix. Sem migration adicional: `ds_resumo` já faz parte da migration `002`.
+
 1. Adicionar `sumy` e tokenização portuguesa como dependência de produção.
 2. Implementar `editorial_summary` com LSA extrativo e entrada `DS_NOTICIA`.
 3. Gerar sugestão de no máximo 150 caracteres, priorizando frases completas e
@@ -136,6 +141,10 @@ não duplica; falha de login, página, download ou MinIO não cria item incomple
 **Aceite e testes:** português/acentuação/texto vazio/limite do resumo; edição
 não altera objeto ou hash no MinIO; descarte não exclui linha; contrato rejeita
 estado inválido; Trinix não faz chamada nem marca `PUBLICADO`.
+
+**Validação:** 63 testes unitários passaram na revisão final, incluindo resumo
+em português, rotas OpenAPI, limites de edição, descarte lógico e adaptador
+Trinix inativo.
 
 **Commit:** `feat(sprint-03): adiciona resumo e crud editorial`
 

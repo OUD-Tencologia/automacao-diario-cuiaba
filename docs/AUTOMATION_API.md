@@ -5,9 +5,9 @@
 A Automation API é a porta privada da ingestão editorial. O n8n a chama para
 executar ciclos; ele não recebe acesso direto ao PostgreSQL ou MinIO.
 
-Na Sprint 2, a API possui fundação para Gold única, armazenamento bruto,
-health checks e captura modular da Folhapress. Resumo e CRUD interno entram na
-Sprint 3.
+Na Sprint 3, a API possui a fundação para Gold única, captura modular da
+Folhapress, resumo local e serviço CRUD interno. O workflow horário do n8n e a
+implantação na rede privada da VPS entram na Sprint 4.
 
 ## Endpoints disponíveis
 
@@ -16,6 +16,10 @@ Sprint 3.
 | `GET /health/live` | Confirma que o processo FastAPI está ativo. |
 | `GET /health/ready` | Executa `SELECT 1` no PostgreSQL e `HeadBucket` no bucket `bronze-raw` do MinIO. Retorna `503` sem expor erro ou segredo se uma dependência falhar. |
 | `POST /automation/folhapress/capture` | Executa um ciclo idempotente para uso exclusivo do n8n. Retorna `502` em falha da fonte para que o n8n faça retry; não publica nem altera itens existentes. |
+| `GET /editorial/articles` | Lista notícias com paginação e filtro opcional `status`. |
+| `GET /editorial/articles/{source}/{source_id}` | Consulta uma notícia pelo identificador composto. |
+| `PATCH /editorial/articles/{source}/{source_id}` | Edita somente os campos editoriais aceitos. Rejeita campos técnicos e `PUBLICADO`. |
+| `POST /editorial/articles/{source}/{source_id}/discard` | Define `DESCARTADO`; mantém o registro e o TXT original. |
 | `GET /openapi.json` | Expõe o contrato OpenAPI gerado. |
 
 ## Configuração local
@@ -23,6 +27,13 @@ Sprint 3.
 Em desenvolvimento, a API usa PostgreSQL e MinIO da VPS configurados no
 `.env`. `VPS_HOMOLOGATION_HOST` direciona o PostgreSQL local para a VPS. Um
 endpoint MinIO explícito é preservado.
+
+Depois de `pip install -e .`, prepare o navegador e o tokenizer local:
+
+```powershell
+.\.venv\Scripts\python.exe -m playwright install chromium
+.\.venv\Scripts\python.exe -m nltk.downloader punkt_tab
+```
 
 ## Testes
 
@@ -57,3 +68,19 @@ Para validar login/listagem/download sem gravar no MinIO ou PostgreSQL:
 
 O comando emite apenas contagens, ID e flags de presença de metadados; nunca
 imprime credenciais, cookies, título ou corpo de matéria.
+
+## Resumo e contrato editorial
+
+`SumyLsaEditorialSummary` usa Sumy LSA em português, com dependências NumPy e
+`punkt_tab` preparadas na instalação da imagem. O resumo é extrativo e tem no
+máximo 150 caracteres. Se não houver frase completa que caiba ou se a geração
+falhar, `ds_resumo` fica nulo e a notícia segue para a fila.
+
+O serviço CRUD pode editar chapéu, título, autor, local, corpo de trabalho,
+resumo, destaque, tipo, intenção de publicação e status. Identidade, URL da
+fonte, hash, chave e metadados do objeto MinIO são somente leitura. `PUBLICADO`
+é rejeitado enquanto o Trinix não estiver integrado; descarte é lógico.
+
+Essas rotas são internas e dependem da rede privada da API. Autenticação de
+usuários e frontend continuam fora deste corte; não exponha as rotas
+editoriais à internet pública.

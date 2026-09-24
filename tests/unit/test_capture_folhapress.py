@@ -72,16 +72,34 @@ class FakeRepository:
     def __init__(self, existing_ids: set[str] | None = None) -> None:
         self.ids = existing_ids or set()
         self.created_ids: list[str] = []
+        self.summaries: list[str | None] = []
 
     def exists(self, source: str, source_id: str) -> bool:
         return source_id in self.ids
 
-    def create_if_absent(self, draft: NewsDraft, raw: StoredRawObject) -> PersistedNews:
+    def create_if_absent(
+        self,
+        draft: NewsDraft,
+        raw: StoredRawObject,
+        summary: str | None,
+    ) -> PersistedNews:
+        del raw
         if draft.source_id in self.ids:
             return PersistedNews(source="folhapress", source_id=draft.source_id, created=False)
         self.ids.add(draft.source_id)
         self.created_ids.append(draft.source_id)
+        self.summaries.append(summary)
         return PersistedNews(source="folhapress", source_id=draft.source_id, created=True)
+
+
+class FakeSummary:
+    def __init__(self, *, should_fail: bool = False) -> None:
+        self.should_fail = should_fail
+
+    def generate(self, content: str) -> str | None:
+        if self.should_fail:
+            raise RuntimeError("synthetic summary failure")
+        return content[:150] or None
 
 
 def references() -> list[ArticleReference]:
@@ -102,6 +120,7 @@ class CaptureFolhapressTest(unittest.TestCase):
             downloader=downloader,
             raw_storage=raw_storage,
             repository=repository,
+            summary_generator=FakeSummary(),
         ).run()
 
         self.assertEqual(result.scanned, 2)
@@ -120,6 +139,7 @@ class CaptureFolhapressTest(unittest.TestCase):
             downloader=downloader,
             raw_storage=raw_storage,
             repository=repository,
+            summary_generator=FakeSummary(),
         )
 
         with self.assertRaises(CaptureCycleError) as raised:
@@ -128,3 +148,18 @@ class CaptureFolhapressTest(unittest.TestCase):
         self.assertEqual(raised.exception.failed_source_ids, ("102",))
         self.assertEqual(repository.created_ids, ["101"])
         self.assertEqual(raw_storage.stored_ids, ["101"])
+
+    def test_summary_failure_does_not_block_capture(self) -> None:
+        repository = FakeRepository()
+
+        result = CaptureFolhapress(
+            catalog=FakeCatalog(references()[:1]),
+            extractor=FakeExtractor(),
+            downloader=FakeDownloader(),
+            raw_storage=FakeRawStorage(),
+            repository=repository,
+            summary_generator=FakeSummary(should_fail=True),
+        ).run()
+
+        self.assertEqual(result.captured, 1)
+        self.assertEqual(repository.summaries, [None])

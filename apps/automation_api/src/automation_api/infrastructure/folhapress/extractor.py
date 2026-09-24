@@ -43,8 +43,8 @@ class ArticleExtractor:
             return extract_article_from_html(self._page.content(), reference)
         except FolhapressConnectionError:
             raise
-        except Exception as error:
-            raise FolhapressConnectionError("Não foi possível extrair a matéria Folhapress") from error
+        except Exception:
+            raise FolhapressConnectionError("Não foi possível extrair a matéria Folhapress") from None
 
     def build_draft(self, extracted: ExtractedArticle, original_text: bytes) -> NewsDraft:
         return build_news_draft(extracted, original_text)

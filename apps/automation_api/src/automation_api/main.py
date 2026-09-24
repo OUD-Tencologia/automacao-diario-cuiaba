@@ -3,15 +3,14 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, Request, Response, status
 from pydantic import BaseModel, Field
 
-from automation_api.application.capture_folhapress import CaptureCycleError, CaptureResult
-from automation_api.application.folhapress_runner import run_folhapress_capture
 from automation_api.application.readiness import ReadinessService
-from automation_api.infrastructure.folhapress.errors import FolhapressSourceError
 from automation_api.infrastructure.minio import MinioProbe
 from automation_api.infrastructure.postgres import PostgreSQLProbe
+from automation_api.presentation.automation import router as automation_router
+from automation_api.presentation.editorial import router as editorial_router
 from automation_api.settings import Settings, get_settings
 
 
@@ -23,20 +22,6 @@ class ComponentHealthResponse(BaseModel):
 class ReadinessResponse(BaseModel):
     status: Literal["ready", "not_ready"]
     dependencies: dict[str, ComponentHealthResponse]
-
-
-class CaptureResponse(BaseModel):
-    scanned: int = Field(ge=0)
-    captured: int = Field(ge=0)
-    skipped_existing: int = Field(ge=0)
-
-    @classmethod
-    def from_result(cls, result: CaptureResult) -> CaptureResponse:
-        return cls(
-            scanned=result.scanned,
-            captured=result.captured,
-            skipped_existing=result.skipped_existing,
-        )
 
 
 def build_readiness_service(settings: Settings) -> ReadinessService:
@@ -66,8 +51,8 @@ def create_app(readiness_service: ReadinessService | None = None) -> FastAPI:
         title="Automation API — Diário Cuiabá",
         version="0.1.0",
         description=(
-            "API de automação editorial. O n8n a utiliza como única porta "
-            "para ingestão de conteúdo Folhapress e persistência na Gold única."
+            "API editorial interna. O n8n usa o endpoint de automação e o futuro "
+            "Admin usa as rotas editoriais dentro da rede privada."
         ),
     )
     app.state.readiness_service = readiness_service
@@ -102,30 +87,8 @@ def create_app(readiness_service: ReadinessService | None = None) -> FastAPI:
             },
         )
 
-    @app.post(
-        "/automation/folhapress/capture",
-        tags=["automation"],
-        summary="Executa um ciclo Folhapress para uso exclusivo do n8n",
-        response_model=CaptureResponse,
-        responses={
-            502: {"description": "A fonte externa não pôde ser processada."},
-            503: {"description": "A captura não está configurada ou a infraestrutura falhou."},
-        },
-    )
-    def capture_folhapress() -> CaptureResponse:
-        try:
-            return CaptureResponse.from_result(run_folhapress_capture(get_settings()))
-        except (FolhapressSourceError, CaptureCycleError) as error:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="A captura Folhapress falhou; o n8n deve reexecutar o ciclo.",
-            ) from error
-        except ValueError as error:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="A captura Folhapress não está configurada.",
-            ) from error
-
+    app.include_router(automation_router)
+    app.include_router(editorial_router)
     return app
 
 

@@ -63,6 +63,8 @@ class AutomationApiHealthTest(unittest.TestCase):
         self.assertIn("/health/live", response.json()["paths"])
         self.assertIn("/health/ready", response.json()["paths"])
         self.assertIn("/automation/folhapress/capture", response.json()["paths"])
+        self.assertIn("/editorial/articles", response.json()["paths"])
+        self.assertIn("/editorial/articles/{source}/{source_id}", response.json()["paths"])
         self.assertEqual(response.json()["info"]["title"], "Automation API — Diário Cuiabá")
 
     def test_container_aliases_use_the_homologation_host_for_local_development(self) -> None:
