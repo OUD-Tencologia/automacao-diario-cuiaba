@@ -13,6 +13,7 @@ from automation_api.application.capture_folhapress import (
     CaptureSourceError,
 )
 from automation_api.application.folhapress_runner import run_folhapress_capture
+from automation_api.infrastructure.postgres import CaptureAlreadyRunningError
 from automation_api.settings import get_settings
 
 
@@ -26,6 +27,7 @@ class CaptureResponse(BaseModel):
     skipped_existing: int = Field(ge=0)
     failed: int = Field(ge=0)
     duration_ms: int = Field(ge=0)
+    catalog_limit_reached: bool
 
     @classmethod
     def from_result(cls, result: CaptureResult) -> CaptureResponse:
@@ -36,6 +38,7 @@ class CaptureResponse(BaseModel):
             skipped_existing=result.skipped_existing,
             failed=result.failed,
             duration_ms=result.duration_ms,
+            catalog_limit_reached=result.catalog_limit_reached,
         )
 
 
@@ -71,6 +74,7 @@ class CaptureErrorResponse(BaseModel):
             "model": CaptureErrorResponse,
         },
         503: {"description": "A captura não está configurada ou a infraestrutura falhou."},
+        409: {"description": "Já existe uma captura da Folhapress em andamento."},
     },
 )
 def capture_folhapress() -> CaptureResponse | JSONResponse:
@@ -84,6 +88,15 @@ def capture_folhapress() -> CaptureResponse | JSONResponse:
     except CaptureSourceError as error:
         return _capture_error_response(
             CaptureCycleError(error.result, [error.failure])
+        )
+    except CaptureAlreadyRunningError:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "Já existe uma captura Folhapress em andamento.",
+                "capture_id": capture_id,
+                "retryable": True,
+            },
         )
     except ValueError:
         return JSONResponse(

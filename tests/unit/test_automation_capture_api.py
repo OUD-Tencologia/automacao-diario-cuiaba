@@ -16,6 +16,7 @@ from automation_api.application.capture_folhapress import (
     CaptureSourceError,
 )
 from automation_api.infrastructure.folhapress.errors import FolhapressAuthenticationError
+from automation_api.infrastructure.postgres import CaptureAlreadyRunningError
 from automation_api.main import create_app
 
 
@@ -107,6 +108,17 @@ class AutomationCaptureApiTest(unittest.TestCase):
         self.assertEqual(failure["stage"], "login")
         self.assertEqual(failure["diagnostic_code"], "login_submit_navigation_timeout")
         self.assertNotIn("user@example.com", response.text)
+
+    def test_running_capture_returns_retryable_conflict(self) -> None:
+        with patch(
+            "automation_api.presentation.automation.run_folhapress_capture",
+            side_effect=CaptureAlreadyRunningError("already running"),
+        ):
+            response = self.client.post("/automation/folhapress/capture")
+
+        self.assertEqual(response.status_code, 409)
+        self.assertTrue(response.json()["retryable"])
+        self.assertNotIn("already running", response.text)
 
 
 if __name__ == "__main__":

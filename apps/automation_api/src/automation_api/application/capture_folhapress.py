@@ -56,6 +56,7 @@ class CaptureResult:
     skipped_existing: int
     failed: int
     duration_ms: int
+    catalog_limit_reached: bool = False
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,7 @@ class CaptureFolhapress:
         summary_generator: EditorialSummaryPort,
         capture_id: str,
         item_retry: ItemRetryPort | None = None,
+        cycle_deadline_seconds: int = 720,
     ) -> None:
         self._catalog = catalog
         self._extractor = extractor
@@ -126,10 +128,12 @@ class CaptureFolhapress:
         self._summary_generator = summary_generator
         self._capture_id = capture_id
         self._item_retry = item_retry
+        self._cycle_deadline_seconds = cycle_deadline_seconds
 
     def run(self) -> CaptureResult:
         started_at = perf_counter()
         references = self._catalog.list_articles()
+        deadline_at = started_at + self._cycle_deadline_seconds
         captured = 0
         skipped_existing = 0
         failures: list[CaptureFailure] = []
@@ -137,6 +141,16 @@ class CaptureFolhapress:
         logger.info("capture_started capture_id=%s references=%s", self._capture_id, len(references))
 
         for reference in references:
+            if perf_counter() >= deadline_at:
+                failures.append(
+                    CaptureFailure(None, "cycle", "cycle_deadline_exceeded", True)
+                )
+                logger.warning(
+                    "capture_deadline_exceeded capture_id=%s deadline_seconds=%s",
+                    self._capture_id,
+                    self._cycle_deadline_seconds,
+                )
+                break
             try:
                 stage = "database"
                 if self._repository.exists("folhapress", reference.source_id):
@@ -196,15 +210,17 @@ class CaptureFolhapress:
             skipped_existing=skipped_existing,
             failed=len(failures),
             duration_ms=round((perf_counter() - started_at) * 1000),
+            catalog_limit_reached=bool(getattr(self._catalog, "limit_reached", False)),
         )
         logger.info(
-            "capture_finished capture_id=%s scanned=%s captured=%s skipped_existing=%s failed=%s duration_ms=%s",
+            "capture_finished capture_id=%s scanned=%s captured=%s skipped_existing=%s failed=%s duration_ms=%s catalog_limit_reached=%s",
             result.capture_id,
             result.scanned,
             result.captured,
             result.skipped_existing,
             result.failed,
             result.duration_ms,
+            result.catalog_limit_reached,
         )
         if failures:
             raise CaptureCycleError(result, failures)

@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
@@ -201,3 +202,26 @@ class CaptureFolhapressTest(unittest.TestCase):
         self.assertEqual(result.captured, 2)
         self.assertEqual(result.failed, 0)
         self.assertEqual(retry.retried_ids, ["102"])
+
+    def test_cycle_deadline_stops_before_starting_another_item(self) -> None:
+        repository = FakeRepository()
+        capture = CaptureFolhapress(
+            catalog=FakeCatalog(references()),
+            extractor=FakeExtractor(),
+            downloader=FakeDownloader(),
+            raw_storage=FakeRawStorage(),
+            repository=repository,
+            summary_generator=FakeSummary(),
+            capture_id="test-deadline",
+            cycle_deadline_seconds=10,
+        )
+
+        with patch(
+            "automation_api.application.capture_folhapress.perf_counter",
+            side_effect=[0, 11, 11],
+        ), self.assertRaises(CaptureCycleError) as raised:
+            capture.run()
+
+        self.assertEqual(raised.exception.failures[0].stage, "cycle")
+        self.assertEqual(raised.exception.failures[0].diagnostic_code, "cycle_deadline_exceeded")
+        self.assertEqual(repository.created_ids, [])

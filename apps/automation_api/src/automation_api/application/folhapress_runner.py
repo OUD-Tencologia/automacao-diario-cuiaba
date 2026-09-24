@@ -21,6 +21,7 @@ from automation_api.infrastructure.folhapress import (
 from automation_api.infrastructure.gold_news_repository import GoldNewsRepository
 from automation_api.infrastructure.minio import RawStorage, build_s3_client
 from automation_api.infrastructure.postgres import build_postgresql_engine
+from automation_api.infrastructure.postgres import CaptureAlreadyRunningError, PostgreSQLAdvisoryLock
 from automation_api.settings import Settings
 
 
@@ -46,33 +47,35 @@ def run_folhapress_capture(settings: Settings, *, capture_id: str) -> CaptureRes
             ),
         )
         repository = GoldNewsRepository(engine)
-        with FolhapressBrowserSession(configuration) as session:
-            stage = "source_health"
-            SourceHealth(session.page, configuration).check()
-            stage = "login"
-            FolhapressAuth(session.page, configuration).login()
-            stage = "catalog"
-            return CaptureFolhapress(
-                catalog=FolhapressCatalog(session.page, configuration),
-                extractor=ArticleExtractor(
-                    session.page, timeout_ms=configuration.navigation_timeout_ms,
-                    navigation_attempts=configuration.navigation_attempts,
-                ),
-                downloader=TxtDownloader(
-                    session.page,
-                    timeout_ms=configuration.navigation_timeout_ms,
-                ),
-                raw_storage=raw_storage,
-                repository=repository,
-                summary_generator=SumyLsaEditorialSummary(),
-                capture_id=capture_id,
-                item_retry=FreshSessionArticleRetry(
-                    configuration,
-                    attempts=configuration.item_retry_attempts,
-                    delay_ms=configuration.item_retry_delay_ms,
-                ),
-            ).run()
-    except CaptureCycleError:
+        with PostgreSQLAdvisoryLock(engine, "folhapress_capture"):
+            with FolhapressBrowserSession(configuration) as session:
+                stage = "source_health"
+                SourceHealth(session.page, configuration).check()
+                stage = "login"
+                FolhapressAuth(session.page, configuration).login()
+                stage = "catalog"
+                return CaptureFolhapress(
+                    catalog=FolhapressCatalog(session.page, configuration),
+                    extractor=ArticleExtractor(
+                        session.page, timeout_ms=configuration.navigation_timeout_ms,
+                        navigation_attempts=configuration.navigation_attempts,
+                    ),
+                    downloader=TxtDownloader(
+                        session.page,
+                        timeout_ms=configuration.navigation_timeout_ms,
+                    ),
+                    raw_storage=raw_storage,
+                    repository=repository,
+                    summary_generator=SumyLsaEditorialSummary(),
+                    capture_id=capture_id,
+                    item_retry=FreshSessionArticleRetry(
+                        configuration,
+                        attempts=configuration.item_retry_attempts,
+                        delay_ms=configuration.item_retry_delay_ms,
+                    ),
+                    cycle_deadline_seconds=configuration.cycle_deadline_seconds,
+                ).run()
+    except (CaptureAlreadyRunningError, CaptureCycleError):
         raise
     except Exception as error:
         raise CaptureSourceError(

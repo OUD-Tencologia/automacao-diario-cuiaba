@@ -20,6 +20,7 @@ class FolhapressCatalog:
     def __init__(self, page: Any, configuration: FolhapressConfiguration) -> None:
         self._page = page
         self._configuration = configuration
+        self.limit_reached = False
 
     def list_articles(self) -> list[ArticleReference]:
         references: dict[str, ArticleReference] = {}
@@ -48,6 +49,11 @@ class FolhapressCatalog:
 
             if not found_on_page or added == 0:
                 break
+            if (
+                page_number + 1 == self._configuration.max_pages_per_cycle
+                and len(found_on_page) >= self._configuration.page_size
+            ):
+                self.limit_reached = True
 
         return list(references.values())
 

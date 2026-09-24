@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     folhapress_navigation_attempts: int = Field(default=3, ge=1, le=5)
     folhapress_item_retry_attempts: int = Field(default=1, ge=1, le=3)
     folhapress_item_retry_delay_ms: int = Field(default=1_000, ge=0, le=30_000)
+    folhapress_cycle_deadline_seconds: int = Field(default=720, ge=60, le=840)
     folhapress_headless: bool = True
     folhapress_user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -141,6 +142,7 @@ class FolhapressConfiguration:
     navigation_attempts: int = 3
     item_retry_attempts: int = 1
     item_retry_delay_ms: int = 1_000
+    cycle_deadline_seconds: int = 720
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
@@ -180,6 +182,7 @@ class FolhapressConfiguration:
             navigation_attempts=settings.folhapress_navigation_attempts,
             item_retry_attempts=settings.folhapress_item_retry_attempts,
             item_retry_delay_ms=settings.folhapress_item_retry_delay_ms,
+            cycle_deadline_seconds=settings.folhapress_cycle_deadline_seconds,
             user_agent=settings.folhapress_user_agent.strip(),
         )
 

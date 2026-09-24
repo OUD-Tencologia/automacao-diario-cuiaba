@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 import sys
 import unittest
@@ -93,3 +94,16 @@ class FolhapressCatalogTest(unittest.TestCase):
                 FolhapressCatalog(page, configuration()).list_articles()
         self.assertEqual(error.exception.diagnostic_code, "catalog_read_failed")
         self.assertNotIn("private-cookie", str(error.exception))
+
+    def test_reports_when_a_full_last_page_reaches_the_configured_limit(self) -> None:
+        links = "".join(f'<a href="/texto/{index}">Item</a>' for index in range(100, 124))
+        page = FakePage([f"TEXTOS SERVIÇO NOTICIOSO {links}"])
+        catalog = FolhapressCatalog(
+            page,
+            replace(configuration(), max_pages_per_cycle=1),
+        )
+
+        articles = catalog.list_articles()
+
+        self.assertEqual(len(articles), 24)
+        self.assertTrue(catalog.limit_reached)

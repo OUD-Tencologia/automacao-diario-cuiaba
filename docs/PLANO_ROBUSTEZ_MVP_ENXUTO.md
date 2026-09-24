@@ -174,6 +174,10 @@ determinística não gera loop; os testes de navegador e unitários passam.
 **Objetivo:** impedir concorrência e garantir que o cron futuro não deixe itens
 novos para trás.
 
+**Estado:** controle de concorrência, prazo do ciclo e aviso de limite de
+catálogo implementados localmente. A conciliação de objetos MinIO e a validação
+em homologação permanecem pendentes.
+
 1. Implementar lock exclusivo de captura da Folhapress usando advisory lock do
    PostgreSQL, com liberação garantida em `finally`. Não criar tabela de runs.
 2. Quando o lock estiver ocupado, retornar conflito/retry explícito e fazer o
