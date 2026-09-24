@@ -9,10 +9,21 @@ if (-not (Test-Path -LiteralPath $python)) {
     throw "Ambiente virtual não encontrado em .venv. Crie-o e instale o projeto antes de executar testes."
 }
 
-$target = "tests/unit"
-if ($Integration) {
-    $target = "tests"
+$unitExitCode = 0
+& $python -m unittest discover -s "tests/unit" -p "test_*.py" -v
+$unitExitCode = $LASTEXITCODE
+if ($unitExitCode -ne 0) {
+    exit $unitExitCode
 }
 
-& $python -m unittest discover -s $target -p "test_*.py" -v
-exit $LASTEXITCODE
+if ($Integration) {
+    Write-Warning (
+        "A validacao de migration cria e remove o banco temporario " +
+        "automacao_editorial_sprint1_validation no PostgreSQL configurado. " +
+        "Execute apenas contra homologacao descartavel, nunca producao."
+    )
+    & $python (Join-Path $PSScriptRoot "validate_single_gold_migration.py")
+    exit $LASTEXITCODE
+}
+
+exit 0

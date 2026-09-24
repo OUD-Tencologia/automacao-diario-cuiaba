@@ -1,5 +1,22 @@
 # Scripts de diagnóstico local
 
+## Testes da Automation API
+
+Rode os testes unitários com o ambiente virtual do repositório:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test_automation_api.ps1
+```
+
+Para incluir a validação de transição do schema, use `-Integration`. Ela cria e
+remove o banco `automacao_editorial_sprint1_validation` no PostgreSQL apontado
+pela configuração local; use somente o PostgreSQL de homologação após confirmar
+que esse banco temporário não existe. Nunca execute contra produção.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/test_automation_api.ps1 -Integration
+```
+
 ## Validação Folhapress do MVP
 
 `validate_folhapress_access.py` é o diagnóstico vigente da captura enxuta. Ele
