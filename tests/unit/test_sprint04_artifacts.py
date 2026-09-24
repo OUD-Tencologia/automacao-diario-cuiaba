@@ -18,6 +18,7 @@ class Sprint04ArtifactsTest(unittest.TestCase):
         cls.nodes = {node["name"]: node for node in cls.workflow["nodes"]}
 
     def test_workflow_is_importable_inactive_and_hourly(self) -> None:
+        self.assertEqual(self.workflow["id"], "dcFolhapressMvp01")
         self.assertFalse(self.workflow["active"])
         self.assertEqual(self.workflow["settings"]["timezone"], "America/Sao_Paulo")
         schedule = self.nodes["A cada hora"]
