@@ -21,6 +21,26 @@ class GoldNewsRepository:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
 
+    def exists(self, source: str, source_id: str) -> bool:
+        """Evita baixar novamente uma matéria já entregue à fila editorial."""
+
+        statement = text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM gold.articles
+                WHERE source = :source AND id = :source_id
+            )
+            """
+        )
+        with self._engine.connect() as connection:
+            return bool(
+                connection.execute(
+                    statement,
+                    {"source": source.strip().lower(), "source_id": source_id.strip()},
+                ).scalar_one()
+            )
+
     def create_if_absent(self, draft: NewsDraft, raw: StoredRawObject) -> PersistedNews:
         statement = text(
             """

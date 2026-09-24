@@ -93,6 +93,13 @@ sobrescrita; health retorna 200 apenas com banco e bucket utilizáveis.
 
 **Objetivo:** automatizar o caminho já comprovado manualmente.
 
+**Estado:** implementação e testes sintéticos concluídos. A validação externa
+controlada não persistiu dados, mas ficou pendente de nova execução porque a
+Folhapress retornou `ERR_CONNECTION_RESET` ao Chromium automatizado antes do
+login em 24/09/2026. O adaptador trata essa condição como falha reexecutável;
+o comando de confirmação é `python scripts/validate_folhapress_access.py
+--max-pages 1` quando a origem normalizar.
+
 1. Criar configuração tipada da fonte e validar variáveis obrigatórias.
 2. Implementar `source_health` sem vazar segredo ou conteúdo em log.
 3. Implementar `folhapress_auth`, sessão isolada e renovação após expiração.

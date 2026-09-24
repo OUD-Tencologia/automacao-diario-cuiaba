@@ -1,6 +1,24 @@
 # Scripts de diagnóstico local
 
-## PoC Folhapress
+## Validação Folhapress do MVP
+
+`validate_folhapress_access.py` é o diagnóstico vigente da captura enxuta. Ele
+abre uma sessão temporária, valida saúde, login, catálogo, primeira página,
+extração e download de TXT exclusivamente em memória. Não toca MinIO nem
+PostgreSQL e não imprime conteúdo licenciado ou segredo.
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_folhapress_access.py --max-pages 1
+```
+
+Um `ERR_CONNECTION_RESET` da origem é uma falha transitória reexecutável pelo
+n8n; revise os seletores somente se a página carregar, mas o formulário mudar.
+
+## PoC Folhapress histórica
+
+`folhapress_poc.py` pertence ao levantamento anterior e não é o caminho usado
+pela Automation API do MVP enxuto. Mantenha-o somente como evidência da PoC
+manual.
 
 `folhapress_poc.py` valida o acesso autenticado ao caminho `LOGIN` → `ENTRAR`
 → `TEXTOS` e, quando o seletor local do filtro estiver definido, aplica

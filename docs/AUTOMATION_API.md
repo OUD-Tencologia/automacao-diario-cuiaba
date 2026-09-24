@@ -5,9 +5,9 @@
 A Automation API é a porta privada da ingestão editorial. O n8n a chama para
 executar ciclos; ele não recebe acesso direto ao PostgreSQL ou MinIO.
 
-Na Sprint 1, a API possui a fundação para a Gold única, armazenamento bruto e
-health checks. A captura da Folhapress entra na Sprint 2; resumo e CRUD interno,
-na Sprint 3.
+Na Sprint 2, a API possui fundação para Gold única, armazenamento bruto,
+health checks e captura modular da Folhapress. Resumo e CRUD interno entram na
+Sprint 3.
 
 ## Endpoints disponíveis
 
@@ -15,6 +15,7 @@ na Sprint 3.
 |---|---|
 | `GET /health/live` | Confirma que o processo FastAPI está ativo. |
 | `GET /health/ready` | Executa `SELECT 1` no PostgreSQL e `HeadBucket` no bucket `bronze-raw` do MinIO. Retorna `503` sem expor erro ou segredo se uma dependência falhar. |
+| `POST /automation/folhapress/capture` | Executa um ciclo idempotente para uso exclusivo do n8n. Retorna `502` em falha da fonte para que o n8n faça retry; não publica nem altera itens existentes. |
 | `GET /openapi.json` | Expõe o contrato OpenAPI gerado. |
 
 ## Configuração local
@@ -39,3 +40,20 @@ O comando usa o ambiente virtual do projeto e descobre os testes em
 - Conteúdo idêntico reutiliza o objeto existente.
 - Tamanho e SHA-256 são conferidos antes de retornar sucesso.
 - O TXT não é substituído por edição editorial.
+
+## Captura Folhapress
+
+O ciclo cria uma sessão efêmera em memória, verifica a fonte, abre
+explicitamente `/login`, navega o catálogo, deduplica por `SOURCE + ID`, baixa
+o TXT em memória e só então o guarda no MinIO antes de inserir na Gold. Os
+módulos estão em `infrastructure/folhapress/`: `health`, `auth`, `catalog`,
+`extractor` e `downloader`.
+
+Para validar login/listagem/download sem gravar no MinIO ou PostgreSQL:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/validate_folhapress_access.py --max-pages 1
+```
+
+O comando emite apenas contagens, ID e flags de presença de metadados; nunca
+imprime credenciais, cookies, título ou corpo de matéria.
