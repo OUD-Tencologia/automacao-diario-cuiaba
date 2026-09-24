@@ -103,6 +103,18 @@ class FakeSummary:
         return content[:150] or None
 
 
+class FakeItemRetry:
+    def __init__(self) -> None:
+        self.retried_ids: list[str] = []
+
+    def retry(self, reference: ArticleReference) -> tuple[ExtractedArticle, bytes]:
+        self.retried_ids.append(reference.source_id)
+        return (
+            FakeExtractor().extract(reference),
+            f"texto-recuperado-{reference.source_id}".encode(),
+        )
+
+
 def references() -> list[ArticleReference]:
     return [
         ArticleReference.from_url(f"/texto/{source_id}", base_url="https://folhapress.folha.com.br")
@@ -172,3 +184,20 @@ class CaptureFolhapressTest(unittest.TestCase):
 
         self.assertEqual(result.captured, 1)
         self.assertEqual(repository.summaries, [None])
+
+    def test_retryable_download_is_recovered_for_only_the_failed_item(self) -> None:
+        retry = FakeItemRetry()
+        result = CaptureFolhapress(
+            catalog=FakeCatalog(references()),
+            extractor=FakeExtractor(),
+            downloader=FakeDownloader(failing_ids={"102"}),
+            raw_storage=FakeRawStorage(),
+            repository=FakeRepository(),
+            summary_generator=FakeSummary(),
+            capture_id="test-item-retry",
+            item_retry=retry,
+        ).run()
+
+        self.assertEqual(result.captured, 2)
+        self.assertEqual(result.failed, 0)
+        self.assertEqual(retry.retried_ids, ["102"])

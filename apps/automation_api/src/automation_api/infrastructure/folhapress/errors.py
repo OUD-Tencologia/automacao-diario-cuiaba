@@ -28,3 +28,34 @@ class FolhapressDownloadError(FolhapressSourceError):
     def __init__(self, message: str, *, diagnostic_code: str = "unknown") -> None:
         super().__init__(message)
         self.diagnostic_code = diagnostic_code
+
+
+RETRYABLE_DIAGNOSTIC_CODES = frozenset({
+    "connection_reset",
+    "download_failed",
+    "download_timeout",
+    "temporary_file_missing",
+    "browser_download_exception",
+    "navigation_timeout",
+})
+
+
+def is_retryable_source_error(error: Exception) -> bool:
+    """Indica se a falha é transitória sem inspecionar mensagem ou conteúdo."""
+
+    code = getattr(error, "diagnostic_code", None)
+    return isinstance(code, str) and code.lower() in RETRYABLE_DIAGNOSTIC_CODES
+
+
+class FolhapressItemRetryError(FolhapressSourceError):
+    """Falha de item depois de refazer a sessão autenticada de forma limitada."""
+
+    def __init__(self, *, stage: str, error: Exception) -> None:
+        diagnostic_code = getattr(error, "diagnostic_code", "unexpected_error")
+        if not isinstance(diagnostic_code, str) or not diagnostic_code:
+            diagnostic_code = "unexpected_error"
+        super().__init__(
+            "A nova tentativa controlada da matéria Folhapress falhou",
+            diagnostic_code=diagnostic_code,
+        )
+        self.capture_stage = stage

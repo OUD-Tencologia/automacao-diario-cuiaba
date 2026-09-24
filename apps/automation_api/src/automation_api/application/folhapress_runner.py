@@ -14,6 +14,7 @@ from automation_api.infrastructure.folhapress import (
     FolhapressAuth,
     FolhapressBrowserSession,
     FolhapressCatalog,
+    FreshSessionArticleRetry,
     SourceHealth,
     TxtDownloader,
 )
@@ -65,6 +66,11 @@ def run_folhapress_capture(settings: Settings, *, capture_id: str) -> CaptureRes
                 repository=repository,
                 summary_generator=SumyLsaEditorialSummary(),
                 capture_id=capture_id,
+                item_retry=FreshSessionArticleRetry(
+                    configuration,
+                    attempts=configuration.item_retry_attempts,
+                    delay_ms=configuration.item_retry_delay_ms,
+                ),
             ).run()
     except CaptureCycleError:
         raise

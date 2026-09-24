@@ -1,6 +1,7 @@
 # Plano de robustez do MVP enxuto
 
-**Situação:** plano de melhoria; não altera o escopo funcional do MVP.  
+**Situação:** R1 concluída e R2 implementada localmente; validação controlada
+na homologação pendente. Não altera o escopo funcional do MVP.  
 **Base:** código e homologação inspecionados em 24/09/2026.
 
 ## 1. Objetivo e limite
@@ -102,6 +103,10 @@ e um commit próprio. Nenhuma sprint ativa o cron automaticamente.
 **Objetivo:** descobrir a causa real de cada falha e tornar o estado de uma
 execução compreensível no n8n e nos logs.
 
+**Estado:** concluída no código e em testes locais. A API agora gera
+`capture_id`, mede duração, devolve contagens e retorna, em falha parcial,
+etapa/código sanitizado por matéria.
+
 1. Criar um `capture_id` por chamada da API e incluí-lo em todos os logs do
    ciclo, sem usar ID de usuário, cookie ou conteúdo editorial.
 2. Criar um modelo interno de falha por item: `source_id`, `stage`,
@@ -130,6 +135,12 @@ exibe se a execução falhou por completo ou parcialmente.
 
 **Objetivo:** reduzir a falha intermitente do TXT sem fazer repetição cega de
 POST de login ou clique de download.
+
+**Estado:** implementação local concluída; falta validar com uma execução
+controlada no container de homologação. A primeira tentativa usa a sessão do
+ciclo; somente códigos transitórios abrem uma sessão nova limitada para a
+matéria que falhou. Respostas HTML, TXT vazio e falhas de contrato não entram
+em retry.
 
 1. Usar o diagnóstico da R1 para reproduzir no container da API o cenário de
    falha com uma única matéria, em modo não persistente. Não salvar HTML, TXT,

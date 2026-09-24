@@ -7,6 +7,7 @@ from typing import Protocol
 
 from automation_api.domain.folhapress import ArticleReference, ExtractedArticle, FolhapressDataError
 from automation_api.domain.news import NewsDraft, StoredRawObject
+from automation_api.infrastructure.folhapress.errors import is_retryable_source_error
 from automation_api.infrastructure.gold_news_repository import PersistedNews
 
 
@@ -41,6 +42,10 @@ class NewsRepositoryPort(Protocol):
 
 class EditorialSummaryPort(Protocol):
     def generate(self, content: str) -> str | None: ...
+
+
+class ItemRetryPort(Protocol):
+    def retry(self, reference: ArticleReference) -> tuple[ExtractedArticle, bytes]: ...
 
 
 @dataclass(frozen=True)
@@ -111,6 +116,7 @@ class CaptureFolhapress:
         repository: NewsRepositoryPort,
         summary_generator: EditorialSummaryPort,
         capture_id: str,
+        item_retry: ItemRetryPort | None = None,
     ) -> None:
         self._catalog = catalog
         self._extractor = extractor
@@ -119,6 +125,7 @@ class CaptureFolhapress:
         self._repository = repository
         self._summary_generator = summary_generator
         self._capture_id = capture_id
+        self._item_retry = item_retry
 
     def run(self) -> CaptureResult:
         started_at = perf_counter()
@@ -136,9 +143,20 @@ class CaptureFolhapress:
                     skipped_existing += 1
                     continue
                 stage = "article"
-                extracted = self._extractor.extract(reference)
-                stage = "download"
-                original_txt = self._downloader.download(reference)
+                try:
+                    extracted = self._extractor.extract(reference)
+                    stage = "download"
+                    original_txt = self._downloader.download(reference)
+                except Exception as error:
+                    if not self._should_retry_item(stage, error):
+                        raise
+                    logger.info(
+                        "capture_item_retrying capture_id=%s source_id=%s stage=%s",
+                        self._capture_id,
+                        reference.source_id,
+                        stage,
+                    )
+                    extracted, original_txt = self._item_retry.retry(reference)
                 stage = "minio"
                 raw = self._raw_storage.store("folhapress", reference.source_id, original_txt)
                 stage = "draft"
@@ -150,7 +168,11 @@ class CaptureFolhapress:
                     self._generate_summary(draft, logger),
                 )
             except Exception as error:
-                failure = _capture_failure(reference.source_id, stage, error)
+                failure = _capture_failure(
+                    reference.source_id,
+                    getattr(error, "capture_stage", stage),
+                    error,
+                )
                 failures.append(failure)
                 logger.warning(
                     "capture_item_failed capture_id=%s source_id=%s stage=%s code=%s retryable=%s",
@@ -199,6 +221,13 @@ class CaptureFolhapress:
                 draft.source_id,
             )
             return None
+
+    def _should_retry_item(self, stage: str, error: Exception) -> bool:
+        return bool(
+            self._item_retry is not None
+            and stage in {"article", "download"}
+            and is_retryable_source_error(error)
+        )
 
 
 _RETRYABLE_CODES = frozenset({
