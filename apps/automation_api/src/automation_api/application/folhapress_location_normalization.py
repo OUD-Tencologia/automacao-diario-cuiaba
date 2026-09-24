@@ -9,7 +9,7 @@ import logging
 from automation_api.domain.folhapress import normalize_location
 from automation_api.infrastructure.folhapress.extractor import decode_original_text
 from automation_api.infrastructure.gold_news_repository import GoldNewsRepository
-from automation_api.infrastructure.minio import RawStorage
+from automation_api.infrastructure.minio import RawStorage, build_s3_client
 from automation_api.infrastructure.postgres import build_postgresql_engine
 from automation_api.observability import configure_automation_logging
 from automation_api.settings import Settings
@@ -40,11 +40,13 @@ def run_folhapress_location_normalization(
     repository = GoldNewsRepository(engine)
     storage = RawStorage(
         settings.minio_bucket_bronze,
-        endpoint=settings.resolved_minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key.get_secret_value(),
-        region=settings.minio_region,
-        timeout_seconds=settings.health_check_timeout_seconds,
+        build_s3_client(
+            endpoint=settings.resolved_minio_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key.get_secret_value(),
+            region=settings.minio_region,
+            timeout_seconds=settings.health_check_timeout_seconds,
+        ),
     )
     repaired = 0
     skipped = 0
