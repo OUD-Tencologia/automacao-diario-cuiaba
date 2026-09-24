@@ -10,7 +10,7 @@ from automation_api.domain.folhapress import normalize_location
 from automation_api.infrastructure.folhapress.extractor import decode_original_text
 from automation_api.infrastructure.gold_news_repository import GoldNewsRepository
 from automation_api.infrastructure.minio import RawStorage
-from automation_api.infrastructure.postgres import create_engine
+from automation_api.infrastructure.postgres import build_postgresql_engine
 from automation_api.observability import configure_automation_logging
 from automation_api.settings import Settings
 
@@ -33,7 +33,10 @@ def run_folhapress_location_normalization(
 
     configure_automation_logging(settings.log_level)
     logger = logging.getLogger(__name__)
-    engine = create_engine(settings.resolved_database_url, settings.health_check_timeout_seconds)
+    engine = build_postgresql_engine(
+        settings.resolved_database_url,
+        settings.health_check_timeout_seconds,
+    )
     repository = GoldNewsRepository(engine)
     storage = RawStorage(
         settings.minio_bucket_bronze,
