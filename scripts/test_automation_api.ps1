@@ -1,5 +1,6 @@
 param(
-    [switch]$Integration
+    [switch]$Integration,
+    [switch]$Browser
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,13 @@ $unitExitCode = 0
 $unitExitCode = $LASTEXITCODE
 if ($unitExitCode -ne 0) {
     exit $unitExitCode
+}
+
+if ($Browser) {
+    & $python -m unittest discover -s "tests/browser" -p "test_*.py" -v
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
 }
 
 if ($Integration) {

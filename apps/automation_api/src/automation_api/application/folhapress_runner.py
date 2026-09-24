@@ -41,9 +41,12 @@ def run_folhapress_capture(settings: Settings) -> CaptureResult:
             FolhapressAuth(session.page, configuration).login()
             return CaptureFolhapress(
                 catalog=FolhapressCatalog(session.page, configuration),
-                extractor=ArticleExtractor(session.page),
+                extractor=ArticleExtractor(
+                    session.page, timeout_ms=configuration.navigation_timeout_ms,
+                    navigation_attempts=configuration.navigation_attempts,
+                ),
                 downloader=TxtDownloader(
-                    session.context,
+                    session.page,
                     timeout_ms=configuration.navigation_timeout_ms,
                 ),
                 raw_storage=raw_storage,

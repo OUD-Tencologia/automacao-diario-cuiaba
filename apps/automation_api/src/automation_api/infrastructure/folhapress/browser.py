@@ -38,7 +38,7 @@ class FolhapressBrowserSession:
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self._configuration.headless)
         self._context = self._browser.new_context(
-            accept_downloads=False,
+            accept_downloads=True,
             locale="pt-BR",
             timezone_id="America/Sao_Paulo",
             user_agent=self._configuration.user_agent,

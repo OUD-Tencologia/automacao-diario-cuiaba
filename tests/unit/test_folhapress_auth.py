@@ -3,10 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
 
 from automation_api.infrastructure.folhapress.auth import FolhapressAuth
+from automation_api.infrastructure.folhapress.errors import FolhapressConnectionError
 from automation_api.infrastructure.folhapress.health import SourceHealth
 from automation_api.settings import FolhapressConfiguration
 
@@ -22,10 +24,16 @@ class FakeLocator:
         self.selector = selector
         self.first = self
 
-    def fill(self, value: str) -> None:
+    def filter(self, **kwargs: object) -> FakeLocator:
+        return self
+
+    def wait_for(self, **kwargs: object) -> None:
+        return None
+
+    def fill(self, value: str, **kwargs: object) -> None:
         self.page.filled[self.selector] = value
 
-    def click(self) -> None:
+    def click(self, **kwargs: object) -> None:
         self.page.clicked.append(self.selector)
 
     def count(self) -> int:
@@ -78,6 +86,12 @@ def configuration() -> FolhapressConfiguration:
 
 
 class FolhapressAuthTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # Prontidão DOM é exercitada com Chromium em tests/browser.
+        readiness = patch("automation_api.infrastructure.folhapress.auth.wait_for_catalog")
+        readiness.start()
+        self.addCleanup(readiness.stop)
+
     def test_auth_navigates_to_login_before_filling_credentials(self) -> None:
         page = FakePage()
         config = configuration()
@@ -87,6 +101,15 @@ class FolhapressAuthTest(unittest.TestCase):
         self.assertEqual(page.urls, [config.login_url, config.catalog_url])
         self.assertEqual(page.filled['input[type="password"]'], "synthetic-password")
         self.assertEqual(len(page.clicked), 1)
+
+    def test_auth_diagnostic_code_identifies_unavailable_login_page(self) -> None:
+        page = FakePage([FakeResponse(503), FakeResponse(503)])
+
+        with self.assertRaises(FolhapressConnectionError) as raised:
+            FolhapressAuth(page, configuration()).login()
+
+        self.assertEqual(raised.exception.diagnostic_code, "http_503")
+        self.assertFalse(page.filled)
 
     def test_health_retries_transient_navigation_failure(self) -> None:
         page = FakePage([FakeResponse(503), FakeResponse(200)])

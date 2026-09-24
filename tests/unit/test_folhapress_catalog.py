@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path("apps/automation_api/src").resolve()))
 
@@ -53,6 +54,11 @@ def configuration() -> FolhapressConfiguration:
 
 
 class FolhapressCatalogTest(unittest.TestCase):
+    def setUp(self) -> None:
+        readiness = patch("automation_api.infrastructure.folhapress.catalog.wait_for_catalog")
+        readiness.start()
+        self.addCleanup(readiness.stop)
+
     def test_collects_unique_articles_and_uses_observed_pagination(self) -> None:
         page = FakePage(
             [
@@ -62,8 +68,8 @@ class FolhapressCatalogTest(unittest.TestCase):
                 <a href="/texto/102">Segunda</a>
                 <a href="/texto/102/baixar">Download</a>
                 """,
-                '<a href="/texto/103">Terceira</a>',
-                "<p>Sem resultados</p>",
+                'TEXTOS SERVIÇO NOTICIOSO <a href="/texto/103">Terceira</a>',
+                "TEXTOS SERVIÇO NOTICIOSO <p>Sem resultados</p>",
             ]
         )
 
@@ -79,3 +85,11 @@ class FolhapressCatalogTest(unittest.TestCase):
 
         with self.assertRaises(FolhapressCatalogError):
             FolhapressCatalog(page, configuration()).list_articles()
+
+    def test_catalog_read_error_is_sanitized(self) -> None:
+        page = FakePage([])
+        with patch.object(page, "content", side_effect=RuntimeError("private-cookie")):
+            with self.assertRaises(FolhapressCatalogError) as error:
+                FolhapressCatalog(page, configuration()).list_articles()
+        self.assertEqual(error.exception.diagnostic_code, "catalog_read_failed")
+        self.assertNotIn("private-cookie", str(error.exception))

@@ -14,6 +14,17 @@ _ARTICLE_PATH_PATTERN = re.compile(r"/texto/(?P<id>\d+)/?$")
 class FolhapressDataError(ValueError):
     """Indica que uma página ou TXT não contém os campos mínimos esperados."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostic_code: str = "invalid_source_data",
+        missing_fields: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.diagnostic_code = diagnostic_code
+        self.missing_fields = missing_fields
+
 
 @dataclass(frozen=True)
 class ArticleReference:
@@ -24,10 +35,15 @@ class ArticleReference:
 
     def __post_init__(self) -> None:
         if not self.source_id.isdigit():
-            raise FolhapressDataError("O ID Folhapress deve ser numérico")
+            raise FolhapressDataError(
+                "O ID Folhapress deve ser numérico", diagnostic_code="invalid_source_id"
+            )
         match = _ARTICLE_PATH_PATTERN.search(urlsplit(self.article_url).path)
         if not match or match.group("id") != self.source_id:
-            raise FolhapressDataError("A URL da matéria não corresponde ao ID Folhapress")
+            raise FolhapressDataError(
+                "A URL da matéria não corresponde ao ID Folhapress",
+                diagnostic_code="article_url_id_mismatch",
+            )
 
     @classmethod
     def from_url(cls, article_url: str, *, base_url: str) -> ArticleReference:
@@ -35,7 +51,10 @@ class ArticleReference:
         absolute_url = absolute_url.split("?", 1)[0]
         match = _ARTICLE_PATH_PATTERN.search(urlsplit(absolute_url).path)
         if not match:
-            raise FolhapressDataError("URL não possui o ID de uma matéria Folhapress")
+            raise FolhapressDataError(
+                "URL não possui o ID de uma matéria Folhapress",
+                diagnostic_code="article_url_missing_id",
+            )
         return cls(source_id=match.group("id"), article_url=absolute_url)
 
     @property

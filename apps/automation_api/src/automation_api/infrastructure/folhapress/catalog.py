@@ -7,6 +7,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from automation_api.domain.folhapress import ArticleReference, FolhapressDataError
 from automation_api.infrastructure.folhapress.errors import FolhapressCatalogError
+from automation_api.infrastructure.folhapress.navigation import navigate_html, wait_for_catalog
 from automation_api.settings import FolhapressConfiguration
 
 
@@ -24,20 +25,20 @@ class FolhapressCatalog:
         references: dict[str, ArticleReference] = {}
         for page_number in range(self._configuration.max_pages_per_cycle):
             url = self._catalog_page_url(page_number)
+            navigate_html(
+                self._page, url, stage="catalog",
+                timeout_ms=self._configuration.navigation_timeout_ms,
+                attempts=self._configuration.navigation_attempts,
+                ready=lambda: wait_for_catalog(self._page, self._configuration),
+            )
             try:
-                response = self._page.goto(url, wait_until="domcontentloaded")
-                status_code = getattr(response, "status", None)
-                if status_code is None or not 200 <= status_code < 400:
-                    raise FolhapressCatalogError("O catálogo Folhapress não respondeu com sucesso")
-                self._wait_for_catalog_or_empty_page()
                 html = self._page.content()
-            except FolhapressCatalogError:
-                raise
             except Exception:
-                raise FolhapressCatalogError("Não foi possível ler o catálogo Folhapress") from None
-
-            if page_number == 0:
-                self._assert_required_labels(html)
+                raise FolhapressCatalogError(
+                    "Não foi possível ler o catálogo Folhapress",
+                    diagnostic_code="catalog_read_failed",
+                ) from None
+            self._assert_required_labels(html)
             found_on_page = self._references_from_html(html)
             added = 0
             for reference in found_on_page:
@@ -58,18 +59,6 @@ class FolhapressCatalog:
         query["sr"] = str(1 + page_number * self._configuration.page_size)
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), ""))
 
-    def _wait_for_catalog_or_empty_page(self) -> None:
-        try:
-            self._page.wait_for_selector(
-                self._configuration.article_link_selector,
-                state="attached",
-                timeout=min(self._configuration.navigation_timeout_ms, 5_000),
-            )
-        except Exception:
-            # Uma página vazia é uma condição válida no fim da paginação. A
-            # checagem de HTML logo após diferencia-a de um retorno malformado.
-            return
-
     def _assert_required_labels(self, html: str) -> None:
         normalized = " ".join(_text_from_html(html).split()).casefold()
         missing = [
@@ -78,7 +67,10 @@ class FolhapressCatalog:
             if label.casefold() not in normalized
         ]
         if missing:
-            raise FolhapressCatalogError("O catálogo não contém os filtros esperados")
+            raise FolhapressCatalogError(
+                "O catálogo não contém os filtros esperados",
+                diagnostic_code="catalog_markup_invalid",
+            )
 
     def _references_from_html(self, html: str) -> list[ArticleReference]:
         references: list[ArticleReference] = []

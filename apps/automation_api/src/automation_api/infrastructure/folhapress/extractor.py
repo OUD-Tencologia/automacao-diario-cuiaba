@@ -16,6 +16,7 @@ from automation_api.domain.folhapress import (
 )
 from automation_api.domain.news import NewsDraft
 from automation_api.infrastructure.folhapress.errors import FolhapressConnectionError
+from automation_api.infrastructure.folhapress.navigation import navigate_html, wait_for_download_link
 
 
 _SAO_PAULO = ZoneInfo("America/Sao_Paulo")
@@ -26,20 +27,28 @@ _TAG_TEXT_PATTERN = re.compile(
     r"<(?:h1|p|time)\b[^>]*>(?P<text>.*?)</(?:h1|p|time)>",
     re.IGNORECASE | re.DOTALL,
 )
+_DISPLAYED_DATETIME_PATTERN = re.compile(
+    r"(?P<date>\d{1,2}/\d{1,2}/\d{4})\s*(?:[-–—,]|\b(?:a|à|as|às)\b)?\s*"
+    r"(?P<hour>\d{1,2})(?:h|:)(?P<minute>\d{2})(?::(?P<second>\d{2}))?",
+    flags=re.IGNORECASE,
+)
 
 
 class ArticleExtractor:
     """Extrai metadados da página; o corpo definitivo vem do TXT autenticado."""
 
-    def __init__(self, page: Any) -> None:
+    def __init__(self, page: Any, *, timeout_ms: int = 30_000, navigation_attempts: int = 3) -> None:
         self._page = page
+        self._timeout_ms = timeout_ms
+        self._navigation_attempts = navigation_attempts
 
     def extract(self, reference: ArticleReference) -> ExtractedArticle:
+        navigate_html(
+            self._page, reference.article_url, stage="article_page",
+            timeout_ms=self._timeout_ms, attempts=self._navigation_attempts,
+            ready=lambda: wait_for_download_link(self._page, reference.download_url, self._timeout_ms),
+        )
         try:
-            response = self._page.goto(reference.article_url, wait_until="domcontentloaded")
-            status_code = getattr(response, "status", None)
-            if status_code is None or not 200 <= status_code < 400:
-                raise FolhapressConnectionError("A página da matéria não respondeu com sucesso")
             return extract_article_from_html(self._page.content(), reference)
         except FolhapressConnectionError:
             raise
@@ -68,7 +77,10 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         parser.meta.get("property:article:published_time"),
         parser.meta.get("name:date"),
         parser.meta.get("name:datepublished"),
+        parser.meta.get("itemprop:datepublished"),
         _json_value(json_ld, "datePublished"),
+        *parser.time_values,
+        *_semantic_published_values(parser.text_info_values),
     )
     content = _first_value(
         _json_value(json_ld, "articleBody"),
@@ -110,8 +122,21 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
     content = _first_value(fields.get("content"), extracted.content, txt)
     location = normalize_location(_first_value(fields.get("location"), extracted.location, content))
 
-    if not title or not published_at or not content:
-        raise FolhapressDataError("A matéria não contém título, data/hora ou conteúdo")
+    missing_fields = tuple(
+        field_name
+        for field_name, value in (
+            ("title", title),
+            ("published_at", published_at),
+            ("content", content),
+        )
+        if not value
+    )
+    if missing_fields:
+        raise FolhapressDataError(
+            "A matéria não contém todos os campos obrigatórios",
+            diagnostic_code="required_fields_missing",
+            missing_fields=missing_fields,
+        )
 
     return NewsDraft(
         source="folhapress",
@@ -142,6 +167,12 @@ def decode_original_text(content: bytes) -> str:
 def parse_folhapress_datetime(value: str) -> datetime:
     normalized = " ".join(value.strip().split())
     normalized = re.sub(r"(\d{1,2})h(\d{2})", r"\1:\2", normalized, flags=re.IGNORECASE)
+    displayed = _DISPLAYED_DATETIME_PATTERN.search(normalized)
+    if displayed:
+        normalized = (
+            f"{displayed.group('date')} {displayed.group('hour')}:{displayed.group('minute')}"
+            + (f":{displayed.group('second')}" if displayed.group('second') else "")
+        )
     try:
         parsed = datetime.fromisoformat(normalized.replace("Z", "+00:00"))
     except ValueError:
@@ -152,7 +183,10 @@ def parse_folhapress_datetime(value: str) -> datetime:
             except ValueError:
                 continue
         else:
-            raise FolhapressDataError("Data/hora Folhapress inválida")
+            raise FolhapressDataError(
+                "Data/hora Folhapress inválida",
+                diagnostic_code="invalid_published_at",
+            )
     return parsed.replace(tzinfo=_SAO_PAULO) if parsed.tzinfo is None else parsed.astimezone(_SAO_PAULO)
 
 
@@ -161,29 +195,71 @@ class _MetadataParser(HTMLParser):
         super().__init__()
         self.meta: dict[str, str] = {}
         self.json_ld: list[str] = []
+        self.time_values: list[str] = []
+        self.text_info_values: list[str] = []
         self._inside_json_ld = False
         self._json_ld_parts: list[str] = []
+        self._inside_time = False
+        self._time_parts: list[str] = []
+        self._time_datetime: str | None = None
+        self._text_info_div_stack: list[bool] = []
+        self._inside_text_info_li = False
+        self._text_info_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attributes = {name.casefold(): value or "" for name, value in attrs}
         if tag.casefold() == "meta":
-            key = attributes.get("property") or attributes.get("name")
+            key_kind = next(
+                (kind for kind in ("property", "name", "itemprop") if attributes.get(kind)),
+                None,
+            )
+            key = attributes.get(key_kind) if key_kind else None
             value = attributes.get("content")
             if key and value:
-                self.meta[f"{'property' if attributes.get('property') else 'name'}:{key.casefold()}"] = value.strip()
+                self.meta[f"{key_kind}:{key.casefold()}"] = value.strip()
         if tag.casefold() == "script" and attributes.get("type", "").casefold() == "application/ld+json":
             self._inside_json_ld = True
             self._json_ld_parts = []
+        if tag.casefold() == "time":
+            self._inside_time = True
+            self._time_parts = []
+            self._time_datetime = attributes.get("datetime", "").strip() or None
+        if tag.casefold() == "div":
+            classes = set(attributes.get("class", "").split())
+            parent_active = self._text_info_div_stack[-1] if self._text_info_div_stack else False
+            self._text_info_div_stack.append(parent_active or "text-info" in classes)
+        if tag.casefold() == "li" and self._text_info_div_stack and self._text_info_div_stack[-1]:
+            self._inside_text_info_li = True
+            self._text_info_parts = []
 
     def handle_data(self, data: str) -> None:
         if self._inside_json_ld:
             self._json_ld_parts.append(data)
+        if self._inside_time:
+            self._time_parts.append(data)
+        if self._inside_text_info_li:
+            self._text_info_parts.append(data)
 
     def handle_endtag(self, tag: str) -> None:
         if tag.casefold() == "script" and self._inside_json_ld:
             self.json_ld.append("".join(self._json_ld_parts))
             self._inside_json_ld = False
             self._json_ld_parts = []
+        if tag.casefold() == "time" and self._inside_time:
+            value = self._time_datetime or " ".join("".join(self._time_parts).split())
+            if value:
+                self.time_values.append(value)
+            self._inside_time = False
+            self._time_parts = []
+            self._time_datetime = None
+        if tag.casefold() == "li" and self._inside_text_info_li:
+            value = " ".join("".join(self._text_info_parts).split())
+            if value:
+                self.text_info_values.append(value)
+            self._inside_text_info_li = False
+            self._text_info_parts = []
+        if tag.casefold() == "div" and self._text_info_div_stack:
+            self._text_info_div_stack.pop()
 
 
 def _labeled_txt_fields(text: str) -> dict[str, str | datetime]:
@@ -215,6 +291,15 @@ def _labeled_txt_fields(text: str) -> dict[str, str | datetime]:
                 parse_folhapress_datetime(value) if field_name == "published_at" else value
             )
     return fields
+
+
+def _semantic_published_values(values: list[str]) -> tuple[str, ...]:
+    """Mantém somente data+hora do bloco editorial observado, nunca do corpo."""
+    return tuple(
+        value
+        for value in values
+        if len(value) <= 160 and _DISPLAYED_DATETIME_PATTERN.search(value)
+    )
 
 
 def _tag_texts(html: str) -> list[str]:
