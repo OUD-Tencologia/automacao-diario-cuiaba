@@ -215,3 +215,20 @@ class GoldNewsRepositoryTest(unittest.TestCase):
         self.assertIn("status = 'FILA_EDITORIAL'", engine.connection.statement)
         self.assertIn("extraction_contract_version", engine.connection.statement)
         self.assertNotIn("minio_object_key =", engine.connection.statement)
+
+    def test_location_repair_changes_only_the_location_of_a_queue_item(self) -> None:
+        engine = FakeEngine({"source": "folhapress", "id": "2599841"})
+        candidate = ReconciliationCandidate(
+            source="folhapress",
+            source_id="2599841",
+            source_url="https://folhapress.example/texto/2599841",
+            minio_object_key="folhapress/2599841/example.txt",
+            raw_sha256="a" * 64,
+        )
+
+        repaired = GoldNewsRepository(engine).repair_location_from_raw(candidate, "Brasília, DF")
+
+        self.assertTrue(repaired)
+        self.assertIn("SET ds_local = :location", engine.connection.statement)
+        self.assertNotIn("ds_titulo =", engine.connection.statement)
+        self.assertEqual(engine.connection.parameters["location"], "Brasília, DF")

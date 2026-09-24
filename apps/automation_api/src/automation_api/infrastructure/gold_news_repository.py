@@ -180,6 +180,57 @@ class GoldNewsRepository:
             row = connection.execute(statement, parameters).mappings().one_or_none()
         return row is not None
 
+    def find_location_normalization_candidates(self, *, limit: int) -> list[ReconciliationCandidate]:
+        """Lista a fila Folhapress para normalizar o local pelo TXT imutável."""
+
+        statement = text(
+            """
+            SELECT source, id, source_url, minio_object_key, raw_sha256
+            FROM gold.articles
+            WHERE source = 'folhapress'
+              AND status = 'FILA_EDITORIAL'
+            ORDER BY created_at ASC, source, id
+            LIMIT :limit
+            """
+        )
+        with self._engine.connect() as connection:
+            rows = connection.execute(statement, {"limit": limit}).mappings().all()
+        return [
+            ReconciliationCandidate(
+                source=str(row["source"]),
+                source_id=str(row["id"]),
+                source_url=str(row["source_url"]),
+                minio_object_key=str(row["minio_object_key"]),
+                raw_sha256=str(row["raw_sha256"]),
+            )
+            for row in rows
+        ]
+
+    def repair_location_from_raw(self, candidate: ReconciliationCandidate, location: str) -> bool:
+        """Atualiza somente ``ds_local`` sem tocar em curadoria nem metadados."""
+
+        statement = text(
+            """
+            UPDATE gold.articles
+            SET ds_local = :location
+            WHERE source = :source
+              AND id = :source_id
+              AND source = 'folhapress'
+              AND status = 'FILA_EDITORIAL'
+            RETURNING source, id
+            """
+        )
+        with self._engine.begin() as connection:
+            row = connection.execute(
+                statement,
+                {
+                    "source": candidate.source.strip().lower(),
+                    "source_id": candidate.source_id.strip(),
+                    "location": location.strip(),
+                },
+            ).mappings().one_or_none()
+        return row is not None
+
     def list_articles(
         self,
         *,

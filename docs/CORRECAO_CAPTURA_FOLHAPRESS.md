@@ -44,6 +44,21 @@ remove objetos, não cria duplicatas e não sobrescreve itens que saíram da fil
 Uma saída JSON contém somente contagens, IDs e códigos sanitizados. Não copie
 texto de notícia, cookies ou credenciais para logs e tickets.
 
+## Normalizar locais de registros já existentes
+
+Quando o catálogo histórico não disponibilizar mais uma matéria, ainda é
+possível corrigir o local de forma verificável pelo TXT já armazenado, sem
+navegar na Folhapress e sem alterar título, chapéu, autor, corpo ou resumo:
+
+```sh
+docker compose -f infra/compose/automation-api.compose.yml exec automation-api \
+  python -m automation_api.cli.normalize_folhapress_locations --limit 100
+```
+
+O resultado transforma, por exemplo, `BRASÍLIA, DF (FOLHAPRESS) - ...` em
+`Brasília, DF`. Um chapéu ausente continua pendente de catálogo/exportação
+histórica confiável; ele nunca é inferido a partir do local ou do título.
+
 ## Operação segura
 
 1. Mantenha o cron n8n inativo.
