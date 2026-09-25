@@ -61,6 +61,17 @@ O resultado transforma, por exemplo, `BRASÍLIA, DF (FOLHAPRESS) - ...` em
 `Brasília, DF`. Um chapéu ausente continua pendente de catálogo/exportação
 histórica confiável; ele nunca é inferido a partir do local ou do título.
 
+## Checkpoint de homologação — 24/09/2026
+
+Após a aplicação controlada dos comandos acima, a tabela de homologação ficou
+com 64 registros Folhapress, todos com `ds_local`, `source_url` canônico e
+referência verificável ao TXT no MinIO. Foram normalizados 64 locais e 61
+registros passaram ao contrato de extração 3; 49 possuem chapéu recuperado do
+catálogo. Três itens históricos (`2600694`, `2600695` e `2600696`) continuam
+com título genérico porque tanto o catálogo histórico quanto suas páginas não
+ofereceram um título específico. Eles foram preservados sem inferência e devem
+ser corrigidos somente se a Folhapress fornecer uma fonte histórica confiável.
+
 ## Operação segura
 
 1. Mantenha o cron n8n inativo.
