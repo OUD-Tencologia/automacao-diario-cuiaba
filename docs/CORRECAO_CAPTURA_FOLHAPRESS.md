@@ -83,10 +83,9 @@ recuperadas automaticamente pela nova sessão e retry, sem perda de item.
 
 Após o ciclo, a conferência cruzada registrou 86 notícias Folhapress na tabela
 `gold.articles` e 86 objetos TXT sob o prefixo `folhapress/` no bucket MinIO.
-Todos os 86 têm título, local, URL de origem e chave MinIO preenchidos. Desses,
-83 estão no contrato de extração 3 — os três restantes são os itens históricos
-sem título confiável já documentados acima. O agendamento horário do n8n não
-foi alterado por esta validação.
+Esse resultado é histórico e foi supersedido pelo contrato 4. O reparo posterior
+está consolidado em `STATUS_CORRECAO_CAPTURA_2026-09-25.md`; o agendamento
+horário do n8n não foi alterado.
 
 ## Operação segura
 
