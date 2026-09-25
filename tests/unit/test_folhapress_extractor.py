@@ -180,6 +180,17 @@ NAO
             "Brasília, DF",
         )
 
+    def test_location_supports_country_and_multiple_source_locations(self) -> None:
+        self.assertEqual(
+            normalize_location("LONDRES, INGLATERRA (FOLHAPRESS) - Texto."),
+            "Londres, Inglaterra",
+        )
+        self.assertEqual(
+            normalize_location("SÃO PAULO, SP E BRASÍLIA, DF (FOLHAPRESS) - Texto."),
+            "São Paulo, SP e Brasília, DF",
+        )
+        self.assertIsNone(normalize_location("Todo período Data Período datepicker"))
+
     def test_download_url_is_derived_from_the_article_id(self) -> None:
         self.assertEqual(
             self.reference.download_url,

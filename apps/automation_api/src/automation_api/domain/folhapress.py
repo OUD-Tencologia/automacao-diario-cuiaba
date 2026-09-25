@@ -107,21 +107,26 @@ def normalize_location(value: str | None) -> str | None:
 
     normalized = " ".join(value.split())
     match = re.match(
-        r"^(?P<city>[^,()\n]+?)(?:\s*,\s*(?P<state>[A-Z]{2}))?\s*"
-        r"\(FOLHAPRESS\)\s*[-–—]",
+        r"^(?P<location>[^()\n]{1,120}?)\s*\(FOLHAPRESS\)\s*[-–—]",
         normalized,
         flags=re.IGNORECASE,
     )
     if match:
-        return _format_location(match.group("city"), match.group("state"))
+        return _format_location_text(match.group("location"))
 
     explicit_match = re.match(
-        r"^(?P<city>[^,()\n]+?)(?:\s*,\s*(?P<state>[A-Z]{2}))?\s*$",
+        r"^(?P<location>[^()\n]{1,120})\s*$",
         normalized,
         flags=re.IGNORECASE,
     )
     if explicit_match:
-        return _format_location(explicit_match.group("city"), explicit_match.group("state"))
+        explicit = explicit_match.group("location")
+        if "," in explicit and re.fullmatch(
+            r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]*(?:,\s*[A-Za-zÀ-ÿ]{2,30})(?:\s+e\s+[A-Za-zÀ-ÿ .'-]+(?:,\s*[A-Za-zÀ-ÿ]{2,30})?)?",
+            explicit,
+            re.IGNORECASE,
+        ):
+            return _format_location_text(explicit)
     # Nunca devolva texto arbitrário como local. A página da Folhapress possui
     # blocos técnicos (por exemplo, o JavaScript do datepicker) que podem ser
     # confundidos com conteúdo quando um seletor semântico não encontra a
@@ -129,8 +134,16 @@ def normalize_location(value: str | None) -> str | None:
     return None
 
 
-def _format_location(city: str, state: str | None) -> str | None:
-    normalized_city = " ".join(city.split()).title()
-    if not normalized_city:
+def _format_location_text(value: str) -> str | None:
+    normalized = " ".join(value.strip(" ,").split())
+    if not normalized:
         return None
-    return f"{normalized_city}, {state.upper()}" if state else normalized_city
+    abbreviations = set(re.findall(r"\b[A-Z]{2,3}\b", normalized))
+    formatted = normalized.title()
+    for abbreviation in abbreviations:
+        formatted = re.sub(
+            rf"\b{re.escape(abbreviation.title())}\b",
+            abbreviation,
+            formatted,
+        )
+    return " ".join(re.sub(r"(?:,\s*)?\bE\b\s+", " e ", formatted).split())

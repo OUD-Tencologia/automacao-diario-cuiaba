@@ -47,7 +47,7 @@ _RESTRICTION_LINE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _LOCATION_LINE_PATTERN = re.compile(
-    r"^[^()\n]{1,120}(?:,\s*[A-Z]{2})?\s*\(FOLHAPRESS\)\s*[-–—]",
+    r"^[^()\n]{1,120}\s*\(FOLHAPRESS\)\s*[-–—]",
     re.IGNORECASE,
 )
 
