@@ -72,6 +72,22 @@ com título genérico porque tanto o catálogo histórico quanto suas páginas n
 ofereceram um título específico. Eles foram preservados sem inferência e devem
 ser corrigidos somente se a Folhapress fornecer uma fonte histórica confiável.
 
+### Validação ponta a ponta — 25/09/2026
+
+Foi executado um ciclo controlado pela mesma rota interna usada pelo n8n
+(`POST /automation/folhapress/capture`). O ciclo `efceb359bec1436991c612db7f5fc9a8`
+concluiu em 704.353 ms com `scanned=22`, `captured=22`,
+`skipped_existing=0` e `failed=0`. Houve duas instabilidades transitórias da
+Folhapress (um `connection_reset` e um timeout de navegação); ambas foram
+recuperadas automaticamente pela nova sessão e retry, sem perda de item.
+
+Após o ciclo, a conferência cruzada registrou 86 notícias Folhapress na tabela
+`gold.articles` e 86 objetos TXT sob o prefixo `folhapress/` no bucket MinIO.
+Todos os 86 têm título, local, URL de origem e chave MinIO preenchidos. Desses,
+83 estão no contrato de extração 3 — os três restantes são os itens históricos
+sem título confiável já documentados acima. O agendamento horário do n8n não
+foi alterado por esta validação.
+
 ## Operação segura
 
 1. Mantenha o cron n8n inativo.
