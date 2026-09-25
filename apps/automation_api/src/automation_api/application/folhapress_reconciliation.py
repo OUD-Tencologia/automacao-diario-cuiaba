@@ -5,7 +5,7 @@ from hashlib import sha256
 import logging
 
 from automation_api.application.editorial_summary import SumyLsaEditorialSummary
-from automation_api.domain.folhapress import FolhapressDataError
+from automation_api.domain.folhapress import ArticleReference, FolhapressDataError
 from automation_api.infrastructure.folhapress import (
     ArticleExtractor,
     FolhapressAuth,
@@ -91,12 +91,11 @@ def run_folhapress_reconciliation(settings: Settings, *, limit: int = 100) -> Re
                             "O TXT armazenado nÃ£o corresponde ao hash da fila",
                             diagnostic_code="raw_hash_mismatch",
                         )
-                    reference = catalog_references.get(candidate.source_id)
-                    if reference is None:
-                        raise FolhapressDataError(
-                            "A matéria não está no catálogo atual para extrair o chapéu",
-                            diagnostic_code="catalog_reference_missing",
-                        )
+                    reference = _reference_for_candidate(
+                        candidate,
+                        catalog_references,
+                        base_url=configuration.base_url,
+                    )
                     extracted = extractor.extract(reference)
                     draft = extractor.build_draft(extracted, original_txt)
                     try:
@@ -128,3 +127,23 @@ def run_folhapress_reconciliation(settings: Settings, *, limit: int = 100) -> Re
         )
     finally:
         engine.dispose()
+
+
+def _reference_for_candidate(
+    candidate: ReconciliationCandidate,
+    catalog_references: dict[str, ArticleReference],
+    *,
+    base_url: str,
+) -> ArticleReference:
+    """Prioriza o catálogo, mas permite recuperar metadados da página antiga.
+
+    Chapéu somente é confiável quando vem do link no catálogo. Para itens que
+    envelheceram e já não aparecem nele, a própria página ainda pode fornecer
+    título, autor e data reais. Se ela continuar retornando apenas o título
+    genérico do portal, ``build_news_draft`` a rejeita e a linha fica intacta.
+    """
+
+    return catalog_references.get(candidate.source_id) or ArticleReference.from_url(
+        candidate.source_url,
+        base_url=base_url,
+    )

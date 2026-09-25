@@ -38,8 +38,10 @@ O comando seleciona itens Folhapress em `FILA_EDITORIAL` cuja versão de contrat
 seja anterior à vigente. Ele relê o TXT já existente no MinIO, valida o SHA-256,
 consulta novamente o catálogo (para recuperar chapéu/título) e a página da
 matéria e atualiza a mesma linha. Se uma matéria não estiver mais no catálogo,
-ela é reportada como `catalog_reference_missing` e não é alterada. O comando não
-remove objetos, não cria duplicatas e não sobrescreve itens que saíram da fila.
+o chapéu permanece pendente, mas a API ainda tenta recuperar título, data e
+autor da própria página. Uma página que retornar somente o título genérico do
+portal é rejeitada e a linha fica intacta. O comando não remove objetos, não
+cria duplicatas e não sobrescreve itens que saíram da fila.
 
 Uma saída JSON contém somente contagens, IDs e códigos sanitizados. Não copie
 texto de notícia, cookies ou credenciais para logs e tickets.
