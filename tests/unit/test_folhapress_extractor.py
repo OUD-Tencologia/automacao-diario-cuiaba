@@ -15,6 +15,7 @@ from automation_api.domain.folhapress import (
 from automation_api.infrastructure.folhapress.extractor import (
     build_news_draft,
     extract_article_from_html,
+    parse_folhapress_txt_header,
     parse_folhapress_datetime,
 )
 
@@ -66,6 +67,42 @@ NAO
         self.assertEqual(draft.location, "Cuiabá, MT")
         self.assertEqual(draft.published_at.tzinfo.key, "America/Sao_Paulo")
         self.assertNotIn("DESTAQUE", draft.content)
+
+    def test_real_unlabeled_txt_header_is_the_source_of_editorial_metadata(self) -> None:
+        extracted = extract_article_from_html(
+            """
+            <h1>Folhapress</h1>
+            <time datetime="2026-09-24T22:44:00Z">agora</time>
+            <div class="content">Todo periodo Data Periodo datepicker</div>
+            """,
+            self.reference,
+        )
+        original = (
+            "APOSTAS-ESPORTIVAS: Lula pretende anunciar proibicao de bets nesta sexta em SP\n\n"
+            "24/09/2026 19h44\n\n"
+            "CATIA SEABRA, MARIANA BRASIL E RAQUEL LOPES\n\n"
+            "SO PODE SER PUBLICADO COM ASSINATURA\n"
+            "BRASILIA, DF (FOLHAPRESS) - Texto original definitivo."
+        ).encode()
+
+        draft = build_news_draft(extracted, original)
+
+        self.assertEqual(draft.eyebrow, "APOSTAS-ESPORTIVAS")
+        self.assertEqual(draft.title, "Lula pretende anunciar proibicao de bets nesta sexta em SP")
+        self.assertEqual(draft.author, "CATIA SEABRA, MARIANA BRASIL E RAQUEL LOPES")
+        self.assertEqual(draft.location, "Brasilia, DF")
+        self.assertEqual(draft.published_at.isoformat(), "2026-09-24T19:44:00-03:00")
+        self.assertEqual(draft.raw_metadata["metadata_sources"]["location"], "txt_header")
+
+    def test_unlabeled_txt_header_does_not_invent_an_author(self) -> None:
+        header = parse_folhapress_txt_header(
+            "CHINA-EUA: Titulo sintetico\n\n24/09/2026 19h48\n\n"
+            "BRASILIA, DF (FOLHAPRESS) - Corpo da materia."
+        )
+
+        self.assertEqual(header.eyebrow, "CHINA-EUA")
+        self.assertEqual(header.location, "Brasilia, DF")
+        self.assertIsNone(header.author)
 
     def test_json_ld_supplies_page_metadata_when_txt_has_only_body(self) -> None:
         extracted = extract_article_from_html(

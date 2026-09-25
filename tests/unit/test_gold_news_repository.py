@@ -232,3 +232,28 @@ class GoldNewsRepositoryTest(unittest.TestCase):
         self.assertIn("SET ds_local = :location", engine.connection.statement)
         self.assertNotIn("ds_titulo =", engine.connection.statement)
         self.assertEqual(engine.connection.parameters["location"], "Brasília, DF")
+
+    def test_txt_header_repair_preserves_curated_items_and_records_contract(self) -> None:
+        engine = FakeEngine({"source": "folhapress", "id": "2599841"})
+        candidate = ReconciliationCandidate(
+            source="folhapress",
+            source_id="2599841",
+            source_url="https://folhapress.example/texto/2599841",
+            minio_object_key="folhapress/2599841/example.txt",
+            raw_sha256="a" * 64,
+        )
+
+        repaired = GoldNewsRepository(engine).repair_txt_header_metadata(
+            candidate,
+            eyebrow="BRASIL-ONU",
+            title="Título reconstruído",
+            published_at=datetime(2026, 9, 24, 19, 44, tzinfo=timezone.utc),
+            author="AUTORA",
+            location="Brasília, DF",
+        )
+
+        self.assertTrue(repaired)
+        self.assertIn("status = 'FILA_EDITORIAL'", engine.connection.statement)
+        self.assertIn("txt_header_metadata_repaired", engine.connection.parameters["metadata_patch"])
+        self.assertEqual(engine.connection.parameters["author"], "AUTORA")
+        self.assertNotIn("minio_object_key =", engine.connection.statement)

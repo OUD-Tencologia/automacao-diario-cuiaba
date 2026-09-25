@@ -117,7 +117,7 @@ class GoldNewsRepository:
             FROM gold.articles
             WHERE source = 'folhapress'
               AND status = 'FILA_EDITORIAL'
-              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') <> '3'
+              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') NOT IN ('3', '4')
             ORDER BY created_at ASC, source, id
             LIMIT :limit
             """
@@ -159,7 +159,7 @@ class GoldNewsRepository:
               AND id = :source_id
               AND source = 'folhapress'
               AND status = 'FILA_EDITORIAL'
-              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') <> '3'
+              AND COALESCE(raw_metadata->>'extraction_contract_version', '0') NOT IN ('3', '4')
             RETURNING source, id
             """
         )
@@ -205,6 +205,62 @@ class GoldNewsRepository:
             )
             for row in rows
         ]
+
+    def repair_txt_header_metadata(
+        self,
+        candidate: ReconciliationCandidate,
+        *,
+        eyebrow: str | None,
+        title: str | None,
+        published_at: object | None,
+        author: str | None,
+        location: str | None,
+    ) -> bool:
+        """Repara metadados técnicos da fila a partir do TXT imutável.
+
+        A condição por ``FILA_EDITORIAL`` impede que uma eventual curadoria já
+        feita pelo redator seja substituída pelo reprocessamento automático.
+        """
+
+        statement = text(
+            """
+            UPDATE gold.articles
+            SET dt_noticia = COALESCE(:published_at, dt_noticia),
+                ds_chapeu = CASE
+                    WHEN NULLIF(:eyebrow, '') IS NOT NULL THEN :eyebrow
+                    WHEN length(COALESCE(ds_chapeu, '')) <= 100 THEN ds_chapeu
+                    ELSE NULL
+                END,
+                ds_titulo = COALESCE(NULLIF(:title, ''), ds_titulo),
+                nm_autor = COALESCE(NULLIF(:author, ''), nm_autor),
+                ds_local = :location,
+                raw_metadata = raw_metadata || CAST(:metadata_patch AS jsonb)
+            WHERE source = :source
+              AND id = :source_id
+              AND source = 'folhapress'
+              AND status = 'FILA_EDITORIAL'
+            RETURNING source, id
+            """
+        )
+        parameters = {
+            "source": candidate.source.strip().lower(),
+            "source_id": candidate.source_id.strip(),
+            "published_at": published_at,
+            "eyebrow": _optional(eyebrow),
+            "title": _optional(title),
+            "author": _optional(author),
+            "location": _optional(location),
+            "metadata_patch": json.dumps(
+                {
+                    "extraction_contract_version": 4,
+                    "txt_header_metadata_repaired": True,
+                },
+                ensure_ascii=False,
+            ),
+        }
+        with self._engine.begin() as connection:
+            row = connection.execute(statement, parameters).mappings().one_or_none()
+        return row is not None
 
     def repair_location_from_raw(self, candidate: ReconciliationCandidate, location: str) -> bool:
         """Atualiza somente ``ds_local`` sem tocar em curadoria nem metadados."""

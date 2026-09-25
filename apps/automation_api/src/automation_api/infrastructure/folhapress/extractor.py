@@ -39,6 +39,28 @@ _DISPLAYED_DATETIME_PATTERN = re.compile(
     r"(?P<hour>\d{1,2})(?:h|:)(?P<minute>\d{2})(?::(?P<second>\d{2}))?",
     flags=re.IGNORECASE,
 )
+_UNLABELED_HEADLINE_PATTERN = re.compile(
+    r"^\s*(?P<eyebrow>[A-ZÀ-Ý0-9][A-ZÀ-Ý0-9 /_-]{0,99})\s*:\s*(?P<title>\S.+?)\s*$"
+)
+_RESTRICTION_LINE_PATTERN = re.compile(
+    r"^(?:SÓ PODE SER PUBLICADO|TEXTO PARA USO|EMBARGADO|PROIBIDA A REPRODUÇÃO)",
+    re.IGNORECASE,
+)
+_LOCATION_LINE_PATTERN = re.compile(
+    r"^[^()\n]{1,120}(?:,\s*[A-Z]{2})?\s*\(FOLHAPRESS\)\s*[-–—]",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class TxtHeader:
+    """Metadados presentes no cabeçalho não rotulado do TXT da Folhapress."""
+
+    eyebrow: str | None = None
+    title: str | None = None
+    published_at: datetime | None = None
+    author: str | None = None
+    location: str | None = None
 
 
 class ArticleExtractor:
@@ -122,7 +144,7 @@ def extract_article_from_html(html: str, reference: ArticleReference) -> Extract
         location=normalize_location(content),
         content=content,
         raw_metadata={
-            "extraction_contract_version": 3,
+            "extraction_contract_version": 4,
             "page_title_found": bool(page_title),
             "catalog_title_found": bool(reference.catalog_title),
             "page_published_at_found": bool(raw_date),
@@ -144,14 +166,18 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
 
     txt = decode_original_text(original_text)
     fields = _labeled_txt_fields(txt)
+    header = parse_folhapress_txt_header(txt)
     title = _first_specific_value(
-        fields.get("title"), extracted.reference.catalog_title, extracted.title
+        fields.get("title"), header.title, extracted.reference.catalog_title, extracted.title
     ) or _first_value(
         fields.get("title") if isinstance(fields.get("title"), str) else None,
+        header.title,
         extracted.reference.catalog_title,
         extracted.title,
     )
-    published_at = _first_datetime(fields.get("published_at"), extracted.published_at)
+    published_at = _first_datetime(
+        fields.get("published_at"), header.published_at or extracted.published_at
+    )
     # O TXT e o original editorial. HTML serve para metadados; somente um TXT
     # explicitamente estruturado pode substituir o corpo pelo campo DESCRICAO.
     content = _first_value(fields.get("content"), txt)
@@ -159,7 +185,7 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
     location = (
         normalize_location(explicit_location)
         if explicit_location
-        else _location_from_txt_opening(content) or extracted.location
+        else header.location or _location_from_txt_opening(content) or extracted.location
     )
 
     if _is_generic_portal_title(title):
@@ -193,9 +219,9 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
         content=content,
         source_url=extracted.reference.article_url,
         eyebrow=_first_value(
-            fields.get("eyebrow"), extracted.reference.catalog_eyebrow, extracted.eyebrow
+            fields.get("eyebrow"), header.eyebrow, extracted.reference.catalog_eyebrow, extracted.eyebrow
         ),
-        author=_first_value(fields.get("author"), extracted.author),
+        author=_first_value(fields.get("author"), header.author, extracted.author),
         location=location,
         raw_metadata={
             **dict(extracted.raw_metadata),
@@ -205,12 +231,32 @@ def build_news_draft(extracted: ExtractedArticle, original_text: bytes) -> NewsD
                 **dict(extracted.raw_metadata.get("metadata_sources", {})),
                 "title": (
                     "txt" if fields.get("title") and title == fields.get("title")
+                    else "txt_header" if header.title and title == header.title
                     else "catalog" if extracted.reference.catalog_title and title == extracted.reference.catalog_title
                     else "article_page"
                 ),
-                "published_at": "txt" if fields.get("published_at") else "article_page",
+                "published_at": (
+                    "txt" if fields.get("published_at")
+                    else "txt_header" if header.published_at
+                    else "article_page"
+                ),
+                "author": (
+                    "txt" if fields.get("author")
+                    else "txt_header" if header.author
+                    else "article_page" if extracted.author else None
+                ),
+                "eyebrow": (
+                    "txt" if fields.get("eyebrow")
+                    else "txt_header" if header.eyebrow
+                    else "catalog" if extracted.reference.catalog_eyebrow else "article_page"
+                ),
                 "content": "txt",
-                "location": "txt" if fields.get("location") else "txt_opening",
+                "location": (
+                    "txt" if fields.get("location")
+                    else "txt_header" if header.location
+                    else "txt_opening" if _location_from_txt_opening(content)
+                    else "article_page" if extracted.location else None
+                ),
             },
         },
     )
@@ -222,6 +268,70 @@ def decode_original_text(content: bytes) -> str:
     except UnicodeDecodeError:
         decoded = content.decode("latin-1")
     return "\n".join(line.rstrip() for line in decoded.replace("\x00", "").splitlines()).strip()
+
+
+def parse_folhapress_txt_header(text: str) -> TxtHeader:
+    """Lê o cabeçalho real do TXT baixado da Folhapress.
+
+    O formato observado não usa rótulos como ``AUTOR:``: a primeira linha
+    contém ``CHAPÉU: título``; depois vêm data/hora, autor opcional e a linha
+    ``CIDADE, UF (FOLHAPRESS) -``. Campos ausentes permanecem ``None`` — nunca
+    são preenchidos com texto técnico da página HTML.
+    """
+
+    lines = [" ".join(line.split()) for line in text.splitlines() if line.strip()]
+    if not lines:
+        return TxtHeader()
+
+    eyebrow: str | None = None
+    title: str | None = None
+    headline = _UNLABELED_HEADLINE_PATTERN.match(lines[0])
+    if headline and headline.group("eyebrow").casefold() not in {
+        "chapeu", "chapéu", "titulo", "título", "autor", "local",
+    }:
+        eyebrow = headline.group("eyebrow").strip()
+        title = headline.group("title").strip()
+
+    published_at: datetime | None = None
+    date_index: int | None = None
+    for index, line in enumerate(lines[:12]):
+        if len(line) > 80 or not _DISPLAYED_DATETIME_PATTERN.fullmatch(line):
+            continue
+        try:
+            published_at = parse_folhapress_datetime(line)
+            date_index = index
+            break
+        except FolhapressDataError:
+            continue
+
+    location: str | None = None
+    location_index: int | None = None
+    for index, line in enumerate(lines[:16]):
+        if not _LOCATION_LINE_PATTERN.match(line):
+            continue
+        location = normalize_location(line)
+        location_index = index
+        break
+
+    author: str | None = None
+    if date_index is not None:
+        end = location_index if location_index is not None else min(len(lines), date_index + 5)
+        for line in lines[date_index + 1 : end]:
+            if _RESTRICTION_LINE_PATTERN.match(line):
+                continue
+            # A assinatura observada na Folhapress vem em caixa alta. A regra
+            # evita confundir a primeira frase do corpo com um autor ausente.
+            if len(line) <= 180 and line == line.upper() and any(char.isalpha() for char in line):
+                author = line
+                break
+
+    return TxtHeader(
+        eyebrow=eyebrow,
+        title=title,
+        published_at=published_at,
+        author=author,
+        location=location,
+    )
 
 
 def parse_folhapress_datetime(value: str) -> datetime:

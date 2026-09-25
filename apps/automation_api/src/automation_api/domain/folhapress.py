@@ -122,7 +122,11 @@ def normalize_location(value: str | None) -> str | None:
     )
     if explicit_match:
         return _format_location(explicit_match.group("city"), explicit_match.group("state"))
-    return normalized or None
+    # Nunca devolva texto arbitrário como local. A página da Folhapress possui
+    # blocos técnicos (por exemplo, o JavaScript do datepicker) que podem ser
+    # confundidos com conteúdo quando um seletor semântico não encontra a
+    # matéria. Sem o padrão editorial, o valor é desconhecido.
+    return None
 
 
 def _format_location(city: str, state: str | None) -> str | None:
